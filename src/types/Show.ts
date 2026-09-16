@@ -298,6 +298,7 @@ export interface Line {
         sourceDynamicKey?: string // used for scripture slides to link back to the dynamic value key (only scripture_text currently)
     }[]
     chords?: Chords[]
+    customStyle?: string
 }
 
 export interface List {

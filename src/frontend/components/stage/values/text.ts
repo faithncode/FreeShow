@@ -8,7 +8,27 @@ export const slideTextSections: { [key: string]: EditBoxSection } = {
             { id: "includeMedia", type: "checkbox", value: false, values: { label: "edit.includeMedia" } },
             { id: "keepStyle", type: "checkbox", value: false, values: { label: "edit.keepStyle" } },
             { id: "itemNumber", type: "number", value: 0, values: { label: "edit.item_number" } },
-            { id: "invertItems", type: "checkbox", value: false, values: { label: "edit.invert_items" } }
+            { id: "invertItems", type: "checkbox", value: false, values: { label: "edit.invert_items" } },
+            // ── Current-slide group mode ──────────────────────────────────────
+            { id: "showGroupLines", type: "checkbox", value: false, values: { label: "stage.show_group_lines" } },
+            { id: "highlightCurrentLine", type: "checkbox", value: true, values: { label: "stage.highlight_current_line" } },
+            // ── Next unseen stanza mode (whole item becomes a separate preview box)
+            { id: "showNextUnseen", type: "checkbox", value: false, values: { label: "stage.show_next_unseen" } },
+            { id: "nextStanzaLines", type: "number", value: 2, values: { label: "stage.next_stanza_lines", min: 1, max: 10 } },
+            // ── Language filter (applies to both modes) ───────────────────────
+            {
+                id: "lineFilter",
+                type: "dropdown",
+                value: "both",
+                values: {
+                    label: "stage.line_filter",
+                    options: [
+                        { value: "both", label: "stage.filter_both" },
+                        { value: "tamil", label: "stage.filter_tamil" },
+                        { value: "tanglish", label: "stage.filter_tanglish" }
+                    ]
+                }
+            }
         ])
     },
     font: {
