@@ -98,6 +98,13 @@
     $: if (item && isSlideText) {
         setBoxInputValue(stageSections, "default", "lineCount", "hidden", Number(item.slideOffset || 0) === 0)
         setBoxInputValue(stageSections, "default", "invertItems", "hidden", Number(item.itemNumber || 0) !== 0)
+        // showGroupLines and showNextUnseen are mutually exclusive
+        setBoxInputValue(stageSections, "default", "showGroupLines", "hidden", !!item.showNextUnseen)
+        setBoxInputValue(stageSections, "default", "highlightCurrentLine", "hidden", !item.showGroupLines || !!item.showNextUnseen)
+        setBoxInputValue(stageSections, "default", "showNextUnseen", "hidden", !!item.showGroupLines)
+        setBoxInputValue(stageSections, "default", "nextStanzaLines", "hidden", !item.showNextUnseen)
+        // Language filter: visible when either group mode or next-unseen mode is active
+        setBoxInputValue(stageSections, "default", "lineFilter", "hidden", !item.showGroupLines && !item.showNextUnseen)
     }
 
     $: if (item?.type === "slide_tracker" || activeItemId?.includes("tracker")) {

@@ -62,6 +62,11 @@ export interface StageItem {
     lineCount?: number // max lines to show in next slide preview
     itemNumber?: number // only show a certain item index (0 will show all items)
     invertItems?: boolean // invert items if more than one (used for e.g. scripture refs)
+    showGroupLines?: boolean // show all lines of current group
+    highlightCurrentLine?: boolean // highlight current slide's lines within the group
+    lineFilter?: "both" | "tamil" | "tanglish" // filter bilingual line pairs by language
+    showNextUnseen?: boolean // turns this ENTIRE item into a "next unseen stanza" display box
+    nextStanzaLines?: number // how many lines to show when in next-unseen mode (default: 2)
 
     // textbox
     lines?: Line[]

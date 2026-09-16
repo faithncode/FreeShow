@@ -1325,7 +1325,15 @@
         "auto_stretch": "Auto stretch content",
         "labels": "Show labels",
         "label_color": "Label color",
-        "create_stage_output": "Create stage output"
+        "create_stage_output": "Create stage output",
+        "show_group_lines": "Show all lines of group",
+        "highlight_current_line": "Highlight active slide lines",
+        "line_filter": "Language filter",
+        "filter_both": "Both",
+        "filter_tamil": "Tamil only",
+        "filter_tanglish": "Tanglish only",
+        "show_next_unseen": "Show next unseen stanza",
+        "next_stanza_lines": "Preview lines"
     },
     "settings": {
         "general": "General",

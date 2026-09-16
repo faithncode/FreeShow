@@ -397,7 +397,7 @@
                                         class:normalWrap={normalWrap || (isStage ? typeof stageItem?.style === "string" && (stageItem?.style.includes("justify") || stageItem?.style.includes("nowrap")) : line.align?.includes("justify") || line.align?.includes("left") || JSON.stringify(line).includes("nowrap"))}
                                         class:reveal={(centerPreview || isStage) && item?.lineReveal && revealed < i}
                                         class:smallFontSize={smallFontSize || customFontSize || textAnimation.includes("font-size")}
-                                        style="position: relative;{style ? lineStyle : ''}{style ? line.align : ''}{height ? `height: ${height}px;` : ''}{item?.list?.enabled && line.text?.reduce((value, t) => (value += t.value || ''), '')?.length ? listStyle : ''}{item?.list?.enabled ? `color: ${getStyles(line.text?.[0]?.style).color || ''};` : ''}{lineHidden && outputStyle?.showAsFaded ? `opacity: ${(outputStyle.lineOpacity ?? 50) / 100};` : ''}"
+                                        style="position: relative;{style ? lineStyle : ''}{style ? line.align : ''}{height ? `height: ${height}px;` : ''}{item?.list?.enabled && line.text?.reduce((value, t) => (value += t.value || ''), '')?.length ? listStyle : ''}{item?.list?.enabled ? `color: ${getStyles(line.text?.[0]?.style).color || ''};` : ''}{lineHidden && outputStyle?.showAsFaded ? `opacity: ${(outputStyle.lineOpacity ?? 50) / 100};` : ''}{line.customStyle ? `;${line.customStyle}` : ''}"
                                     >
                                         <!-- style Lines selection in center preview -->
                                         {#each highlighedLines || [] as box}
@@ -441,7 +441,7 @@
 
                 {#if !lineHidden || outputStyle?.showAsFaded}
                     {#if chords && chordLines[i]}
-                        <div class:first={i === 0} class="break chords" class:chordOnly class:stageChords={!!stageItem} style="--font-size: {fontSize || baseFontSize || defaultResolvedFontSize || 100}px;--offsetY: {(stageItem?.chords ? stageItem.chords.offsetY : item?.chords?.offsetY) || 0}px;{style ? line.align : ''}">
+                        <div class:first={i === 0} class="break chords" class:chordOnly class:stageChords={!!stageItem} style="--font-size: {fontSize || baseFontSize || defaultResolvedFontSize || 100}px;--offsetY: {(stageItem?.chords ? stageItem.chords.offsetY : item?.chords?.offsetY) || 0}px;{style ? line.align : ''}{line.customStyle ? `;${line.customStyle}` : ''}">
                             {@html chordLines[i]}
                         </div>
                     {/if}
@@ -453,7 +453,7 @@
                             class:normalWrap={normalWrap || (isStage ? typeof stageItem?.style === "string" && (stageItem?.style.includes("justify") || stageItem?.style.includes("nowrap")) : line.align?.includes("justify") || line.align?.includes("left") || JSON.stringify(line).includes("nowrap"))}
                             class:reveal={(centerPreview || isStage) && item?.lineReveal && revealed < i}
                             class:smallFontSize={smallFontSize || customFontSize || textAnimation.includes("font-size")}
-                            style="position: relative;{style ? lineStyle : ''}{style ? line.align : ''}{height ? `height: ${height}px;` : ''}{item?.list?.enabled && line.text?.reduce((value, t) => (value += t.value || ''), '')?.length ? listStyle : ''}{item?.list?.enabled ? `color: ${getStyles(line.text?.[0]?.style).color || ''};` : ''}{lineHidden && outputStyle?.showAsFaded ? `opacity: ${(outputStyle.lineOpacity ?? 50) / 100};` : ''}"
+                            style="position: relative;{style ? lineStyle : ''}{style ? line.align : ''}{height ? `height: ${height}px;` : ''}{item?.list?.enabled && line.text?.reduce((value, t) => (value += t.value || ''), '')?.length ? listStyle : ''}{item?.list?.enabled ? `color: ${getStyles(line.text?.[0]?.style).color || ''};` : ''}{lineHidden && outputStyle?.showAsFaded ? `opacity: ${(outputStyle.lineOpacity ?? 50) / 100};` : ''}{line.customStyle ? `;${line.customStyle}` : ''}"
                         >
                             <!-- style Lines selection in center preview -->
                             {#each highlighedLines || [] as box}

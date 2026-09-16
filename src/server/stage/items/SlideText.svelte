@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { Item, Line, OutSlide } from "../../../types/Show"
+    import type { Item, LayoutRef, Line, OutSlide } from "../../../types/Show"
     import { getStyleResolution } from "../../common/util/getStyleResolution"
     import { clone } from "../../common/util/helpers"
     import Main from "../components/Main.svelte"
@@ -13,7 +13,6 @@
     export let slideOffset: number = 0
     export let stageItem: any
 
-    // export let parent: any
     export let chords: boolean = false
     export let autoSize: boolean = false
     export let autoStage: boolean = true
@@ -24,7 +23,6 @@
 
     $: showRef = currentSlide ? getLayoutRef(currentSlide.id, currentSlide.layout, $showsCache) : []
 
-    // GET CORRECT INDEX OFFSET, EXCLUDING DISABLED SLIDES
     $: slideIndex = currentSlide && currentSlide.index !== undefined && currentSlide.id !== "temp" ? currentSlide.index : null
     let customOffset: number | null = null
     $: if (slideOffset > 0 && slideIndex !== null && showRef) {
@@ -59,12 +57,115 @@
         return { items: currentSlide.tempItems }
     }
 
+    $: targetIndex = customOffset !== null ? customOffset : slideIndex
+
+    // groupRefs: only used for showGroupLines (current-slide merged view)
+    $: groupRefs = stageItem?.showGroupLines && targetIndex !== null && showRef && showRef[targetIndex] ? getGroupRefs(showRef, targetIndex) : []
+
+    function getGroupRefs(refList: LayoutRef[], idx: number) {
+        const targetRef = refList[idx]
+        if (!targetRef) return []
+        const parentId = targetRef.type === "child" ? targetRef.parent?.id : targetRef.id
+        const parentLayoutIndex = targetRef.type === "child" ? targetRef.parent?.layoutIndex : targetRef.layoutIndex
+        return refList.filter((ref) => {
+            if (ref.id === parentId && (parentLayoutIndex === undefined || ref.layoutIndex === parentLayoutIndex)) return true
+            if (ref.type === "child" && ref.parent?.id === parentId) {
+                if (parentLayoutIndex !== undefined && ref.parent?.layoutIndex !== undefined) {
+                    return ref.parent.layoutIndex === parentLayoutIndex
+                }
+                return true
+            }
+            return false
+        })
+    }
+
     $: itemNumber = Number(stageItem?.itemNumber || 0)
     $: reversedItems = !itemNumber && stageItem?.invertItems ? clone(slide?.items || []) : clone(slide?.items || []).reverse()
-    $: items = style ? clone(slide?.items || []) : combineSlideItems(reversedItems)
+    $: langFilter = stageItem?.lineFilter || "both"
 
-    function combineSlideItems(items: Item[]) {
-        let oneItem: Item | null = null // merge all textbox items into one
+    $: items = stageItem?.showNextUnseen
+        ? getNextUnseenItems(showRef, seenGroupIds, targetIndex, langFilter)
+        : groupRefs.length
+            ? getGroupSlideItems(groupRefs, slideId, targetIndex, langFilter)
+            : style
+                ? clone(slide?.items || [])
+                : combineSlideItems(reversedItems, langFilter)
+
+    // ── Language filter helpers ──────────────────────────────────────────────
+    function containsTamil(text: string): boolean {
+        return /[\u0B80-\u0BFF]/.test(text)
+    }
+    function getLineTextValue(line: Line): string {
+        return (line.text || []).map((t) => t.value || "").join("")
+    }
+    function filterLinesByMode(lines: Line[], mode: string): Line[] {
+        if (!mode || mode === "both" || lines.length < 2 || lines.length % 2 !== 0) return lines
+        let isBilingual = true
+        for (let i = 0; i < lines.length; i += 2) {
+            const first = getLineTextValue(lines[i]).trim()
+            const second = getLineTextValue(lines[i + 1]).trim()
+            if (!first || !second || !containsTamil(first) || containsTamil(second)) { isBilingual = false; break }
+        }
+        if (!isBilingual) return lines
+        const filtered: Line[] = []
+        for (let i = 0; i < lines.length; i += 2) {
+            filtered.push(mode === "tamil" ? lines[i] : lines[i + 1])
+        }
+        return filtered
+    }
+
+    // ── Group key helpers (stanza = parent group, e.g. "Verse 1") ────────────
+    function getGroupParentId(ref: LayoutRef): string | null {
+        return ref.type === "child" ? (ref.parent?.id || null) : ref.id
+    }
+    function getGroupParentLayoutIndex(ref: LayoutRef): number {
+        return ref.type === "child" ? (ref.parent?.layoutIndex ?? ref.layoutIndex) : ref.layoutIndex
+    }
+
+    // ── Mode 2: all group lines merged, current highlighted ──────────────────
+    function getGroupSlideItems(refs: LayoutRef[], activeRefId: string | null, activeIndex: number | null, filter: string) {
+        let oneItem: Item | null = null
+        const highlight = stageItem?.highlightCurrentLine !== false
+
+        refs.forEach((gRef) => {
+            const gSlide = $showsCache[currentSlide?.id]?.slides?.[gRef.id]
+            if (!gSlide) return
+            const isActive = activeIndex !== null && gRef.layoutIndex !== undefined ? gRef.layoutIndex === activeIndex : gRef.id === activeRefId
+
+            const gItems = clone(gSlide.items || [])
+                .filter((item) => (item?.type || "text") === "text" && (!item?.bindings?.length || item.bindings.includes("stage")))
+
+            gItems.forEach((item, i) => {
+                if (itemNumber && itemNumber - 1 !== i) return
+                const text = getItemText(item)
+                if (!itemNumber && !text.length) return
+
+                let itemLines = clone(item.lines || [])
+                itemLines = filterLinesByMode(itemLines, filter)
+                if (highlight) {
+                    itemLines.forEach((line) => {
+                        line.customStyle = isActive ? "opacity: 1; color: #FFD700;" : "opacity: 0.55;"
+                        if (Array.isArray(line.text)) {
+                            line.text.forEach((t) => {
+                                t.style = (t.style || "") + (isActive ? ";opacity: 1; color: #FFD700 !important;" : ";opacity: 0.55;")
+                            })
+                        }
+                    })
+                }
+                if (!oneItem) {
+                    oneItem = { ...item, lines: itemLines }
+                } else {
+                    oneItem.lines!.push(...itemLines)
+                }
+            })
+        })
+
+        return oneItem ? [oneItem] : []
+    }
+
+    // ── Mode 3: default — current slide content ───────────────────────────────
+    function combineSlideItems(items: Item[], filter: string) {
+        let oneItem: Item | null = null
         if (!items.length) return []
 
         items
@@ -74,10 +175,12 @@
 
                 let text = getItemText(item)
                 if (itemNumber || text.length) {
-                    if (!oneItem) oneItem = item
+                    const filteredLines = filterLinesByMode(clone(item.lines || []), filter)
+                    const filteredItem = { ...item, lines: filteredLines }
+                    if (!oneItem) oneItem = filteredItem
                     else {
                         let EMPTY_LINE: Line = { align: "", text: [{ style: "", value: "" }] }
-                        oneItem.lines!.push(EMPTY_LINE, ...(item.lines || []))
+                        oneItem.lines!.push(EMPTY_LINE, ...(filteredItem.lines || []))
                     }
                 }
             })
@@ -85,14 +188,123 @@
         return oneItem ? [oneItem as Item] : []
     }
 
+    // ── Seen GROUP tracking ───────────────────────────────────────────────────
+    // "Stanza" = a whole parent group (Verse 1, Chorus, etc.).
+    // When any slide within Verse 1 is active, the entire "Verse 1" group is seen.
+    let seenGroupIds: Set<string> = new Set()
+    let lastTrackShowId: string | null = null
+
+    $: trackSeenGroups(currentSlide?.id, targetIndex, showRef)
+
+    function trackSeenGroups(showId: string | undefined, idx: number | null, refList: LayoutRef[]) {
+        if (!showId) return
+        if (showId !== lastTrackShowId) {
+            seenGroupIds = new Set()
+            lastTrackShowId = showId
+        }
+        if (idx !== null && idx !== undefined && refList[idx]) {
+            const groupId = getGroupParentId(refList[idx])
+            if (!groupId) return
+
+            seenGroupIds.add(groupId)
+
+            const allGroupIds = [...new Set(refList.map((r) => getGroupParentId(r)).filter(Boolean))] as string[]
+            if (allGroupIds.length > 0 && allGroupIds.every((gId) => seenGroupIds.has(gId))) {
+                seenGroupIds = new Set([groupId])
+            } else {
+                seenGroupIds = new Set(seenGroupIds)
+            }
+        }
+    }
+
+    // ── Mode 1: next unseen stanza (separate box) ─────────────────────────────
+    // "Stanza" = a whole GROUP (e.g. Verse 2), not a single slide within a group.
+    // Collects lines from multiple slides within the next group (up to previewLines total).
+    function getNextUnseenItems(refList: LayoutRef[], seen: Set<string>, activeIndex: number | null, filter: string): Item[] {
+        if (!refList.length) return []
+        const previewLines = stageItem?.nextStanzaLines ?? 2
+
+        const currentGroupId = activeIndex !== null && refList[activeIndex] ? getGroupParentId(refList[activeIndex]) : null
+        const currentGroupLayoutIndex = activeIndex !== null && refList[activeIndex] ? getGroupParentLayoutIndex(refList[activeIndex]) : -1
+
+        const groupMap = new Map<string, { layoutIndex: number }>()
+        refList.forEach((ref) => {
+            const gId = getGroupParentId(ref)
+            const gLI = getGroupParentLayoutIndex(ref)
+            if (gId && !groupMap.has(gId)) groupMap.set(gId, { layoutIndex: gLI })
+        })
+        const sortedGroups = [...groupMap.entries()].sort((a, b) => a[1].layoutIndex - b[1].layoutIndex)
+
+        let nextGroupId: string | null = null
+        // Forward: find next unseen group after current
+        for (const [gId, { layoutIndex }] of sortedGroups) {
+            if (seen.has(gId) || gId === currentGroupId) continue
+            if (layoutIndex <= currentGroupLayoutIndex) continue
+            nextGroupId = gId; break
+        }
+        // Cyclic: wrap from beginning
+        if (!nextGroupId) {
+            for (const [gId] of sortedGroups) {
+                if (seen.has(gId) || gId === currentGroupId) continue
+                nextGroupId = gId; break
+            }
+        }
+        if (!nextGroupId) return []
+
+        // All slides within that next group, in order
+        const nextGroupRefs = refList
+            .filter((ref) => getGroupParentId(ref) === nextGroupId)
+            .sort((a, b) => a.layoutIndex - b.layoutIndex)
+
+        // Collect lines from slides (up to previewLines total)
+        let oneItem: Item | null = null
+        let linesLeft = previewLines
+
+        for (const ref of nextGroupRefs) {
+            if (linesLeft <= 0) break
+            const gSlide = $showsCache[currentSlide?.id]?.slides?.[ref.id]
+            if (!gSlide) continue
+
+            const gItems = clone(gSlide.items || [])
+                .filter((item: Item) => (item?.type || "text") === "text" && (!item?.bindings?.length || item.bindings.includes("stage")))
+
+            gItems.forEach((item: Item, i: number) => {
+                if (linesLeft <= 0) return
+                if (itemNumber && itemNumber - 1 !== i) return
+                const text = getItemText(item)
+                if (!itemNumber && !text.length) return
+
+                const filtered = filterLinesByMode(clone(item.lines || []), filter)
+                const take = Math.min(linesLeft, filtered.length)
+                const takenLines = filtered.slice(0, take)
+                linesLeft -= take
+
+                if (!oneItem) {
+                    oneItem = { ...item, lines: takenLines }
+                } else {
+                    oneItem.lines!.push(...takenLines)
+                }
+            })
+        }
+
+        return oneItem ? [oneItem] : []
+    }
+
     $: clickRevealed = slideOffset === 0 && !!currentSlide?.itemClickReveal
     $: revealed = slideOffset === 0 ? (currentSlide?.revealCount || 0) - 1 : -1
-
-    // "Keep Style" renders items at their original position/size inside a slide-resolution canvas (matching the app)
     $: slideResolution = (slide as any)?.settings?.resolution || { width: 1920, height: 1080 }
 </script>
 
-{#if slide}
+{#if stageItem?.showNextUnseen}
+    <!--
+        NEXT UNSEEN STANZA BOX
+        "Stanza" = next unseen GROUP (e.g. Verse 2 when currently on Verse 1).
+        Lines collected across slides within that group up to "Preview lines".
+    -->
+    {#each items as item}
+        <Textbox showId={currentSlide.id} {item} style={false} customStyle={textStyle} {chords} {stageItem} {autoSize} {fontSize} {autoStage} {clickRevealed} {revealed} />
+    {/each}
+{:else if slide || (groupRefs.length && items.length)}
     {#if style}
         <Main let:width let:height>
             <Zoomed show={{ settings: { resolution: slideResolution } }} dynamicResolution={false} style={getStyleResolution(slideResolution, width, height, "fit")} center>

@@ -488,11 +488,11 @@
                     {#if !maxLines || i < maxLines}
                         <!-- WIP chords are way bigger than stage preview for some reason -->
                         {#if chordLines[i]}
-                            <div class:first={i === 0} class="break chords" style="--font-size: {fontSize}px;--offsetY: {stageItem?.chords?.offsetY || 0}px;">
+                            <div class:first={i === 0} class="break chords" style="--font-size: {fontSize}px;--offsetY: {stageItem?.chords?.offsetY || 0}px;{line.customStyle ? ';' + line.customStyle : ''}">
                                 {@html chordLines[i]}
                             </div>
                         {/if}
-                        <div class="break" class:reveal={item?.lineReveal && revealed < i} style="{style ? lineStyle : ''}{style ? line.align : ''}">
+                        <div class="break" class:reveal={item?.lineReveal && revealed < i} style="{style ? lineStyle : ''}{style ? line.align : ''}{line.customStyle ? ';' + line.customStyle : ''}">
                             {#each line.text || [] as text}
                                 {@const value = text.value?.replaceAll("\n", "<br>") || "<br>"}
                                 {#key updateDynamic}

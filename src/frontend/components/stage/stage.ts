@@ -98,6 +98,29 @@ export function getSlideTextItems(stageLayout: StageLayout, item: StageItem, _up
 
     const slideIndex = currentSlide && currentSlide.index !== undefined && currentSlide.id !== "temp" ? currentSlide.index : null
     const customOffset = getStageTextLayoutOffset(showRef, slideOffset, slideIndex)
+    const targetIndex = customOffset ?? slideIndex
+
+    if (item.showGroupLines && targetIndex !== null && showRef[targetIndex]) {
+        const targetRef = showRef[targetIndex]
+        const parentId = targetRef.type === "child" ? targetRef.parent?.id : targetRef.id
+        const parentLayoutIndex = targetRef.type === "child" ? targetRef.parent?.layoutIndex : targetRef.layoutIndex
+        const groupRefs = showRef.filter((ref) => {
+            if (ref.id === parentId && (parentLayoutIndex === undefined || ref.layoutIndex === parentLayoutIndex)) return true
+            if (ref.type === "child" && ref.parent?.id === parentId) {
+                if (parentLayoutIndex !== undefined && ref.parent?.layoutIndex !== undefined) {
+                    return ref.parent.layoutIndex === parentLayoutIndex
+                }
+                return true
+            }
+            return false
+        })
+        const allItems: Item[] = []
+        groupRefs.forEach((gRef) => {
+            const slideItems = get(showsCache)[currentSlide?.id]?.slides?.[gRef.id]?.items || []
+            allItems.push(...slideItems)
+        })
+        return allItems
+    }
 
     const slideId = (customOffset !== null || slideIndex !== null) && showRef ? showRef[(customOffset ?? slideIndex)!]?.id || null : null
     const currentItems = get(showsCache)[currentSlide?.id]?.slides?.[slideId || ""]?.items || []
