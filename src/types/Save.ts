@@ -75,6 +75,7 @@ export type SaveListSettings =
     | "resized"
     | "slidesOptions"
     | "splitLines"
+    | "autoShortcuts"
     | "theme"
     | "transitionData"
     | "audioRouting"

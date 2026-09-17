@@ -60,6 +60,7 @@ export const defaultSettings: { [key in SaveListSettings]: any } = {
     lockedOverlays: {},
     activeScenes: {},
     splitLines: 0,
+    autoShortcuts: false,
     theme: "default",
     transitionData: {
         text: { type: "fade", duration: 500, easing: "sine" },

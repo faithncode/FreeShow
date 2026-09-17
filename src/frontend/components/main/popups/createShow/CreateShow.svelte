@@ -2,7 +2,7 @@
     import { uid } from "uid"
     import { ShowObj } from "../../../../classes/Show"
     import { convertText, getQuickExample, trimNameFromString } from "../../../../converters/txt"
-    import { activePopup, activeProject, activeShow, categories, drawerTabsData, formatNewShow, quickTextCache, shows, special, splitLines } from "../../../../stores"
+    import { activePopup, activeProject, activeShow, autoShortcuts, categories, drawerTabsData, formatNewShow, quickTextCache, shows, special, splitLines } from "../../../../stores"
     import { newToast } from "../../../../utils/common"
     import { translateText } from "../../../../utils/language"
     import { getNormalizedKey } from "../../../../utils/shortcuts"
@@ -146,7 +146,7 @@
         let category = selectedCategory?.id?.length ? selectedCategory.id : null
 
         if (sections.length) {
-            convertText({ name: values.name, category, text, origin: values.origin })
+            convertText({ name: values.name, category, text, origin: values.origin, autoAssignShortcuts: $autoShortcuts })
         } else {
             let show = new ShowObj(false, category)
             show.name = checkName(values.name)
@@ -234,6 +234,7 @@
             <MaterialToggleSwitch label="create_show.auto_groups" checked={$special.autoGroups !== false} defaultValue={true} on:change={(e) => special.set({ ...$special, autoGroups: e.detail })} />
             <MaterialToggleSwitch label="create_show.format_new_show" checked={$formatNewShow} defaultValue={false} on:change={(e) => formatNewShow.set(e.detail)} />
             <MaterialNumberInput label="create_show.split_lines" value={$splitLines} max={100} on:change={(e) => splitLines.set(e.detail)} hideWhenZero />
+            <MaterialToggleSwitch label="create_show.auto_shortcuts" checked={$autoShortcuts} defaultValue={false} on:change={(e) => autoShortcuts.set(e.detail)} />
         </List>
     {/if}
 
