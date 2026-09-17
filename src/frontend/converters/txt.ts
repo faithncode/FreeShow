@@ -46,7 +46,7 @@ export function convertTexts(files: { content: string; name?: string; extension?
 
 // convert a plain text input into a show
 // , onlySlides: boolean = false, { existingSlides } = { existingSlides: {} }
-export function convertText({ name = "", origin = "", category = null, text, noFormatting = false, returnData = false, open = true }: any) {
+export function convertText({ name = "", origin = "", category = null, text, noFormatting = false, returnData = false, open = true, autoAssignShortcuts = false }: any) {
     // remove empty spaces (as groups [] should be used for empty slides)
     // in "Text edit" spaces can be used to create empty "child" slides
     text = text.replaceAll("\r", "").replaceAll("\n \n", "\n\n")
@@ -107,13 +107,60 @@ export function convertText({ name = "", origin = "", category = null, text, noF
         ccli = sections.pop()!
     }
 
-    let labeled: { type: string; text: string }[] = []
+    let labeled: { type: string; text: string; hotkey?: string }[] = []
+
+    // Extract explicit hotkey tags <letter> from sections before pattern detection.
+    // Handles two forms:
+    //   1. Standalone section: just "<c>" between blank lines — hotkey applies to the NEXT section
+    //   2. Inline first line:  "<c>" or "<c> some text" at the start of a section's first line
+    const sectionHotkeyMap = new Map<number, string>()
+    {
+        const cleanedSections: string[] = []
+        let pendingHotkey: string | null = null
+
+        sections.forEach((section) => {
+            // Standalone <letter> section (e.g. just "<c>")
+            const standaloneMatch = section.trim().match(/^<([a-zA-Z])>$/)
+            if (standaloneMatch) {
+                pendingHotkey = standaloneMatch[1].toLowerCase()
+                return // skip — no slide created for this
+            }
+
+            // Inline <letter> at the very start of the first line
+            const sLines = section.split("\n")
+            const inlineMatch = sLines[0]?.trim().match(/^<([a-zA-Z])>\s*(.*)$/)
+
+            let hotkey: string | null = pendingHotkey
+            pendingHotkey = null
+
+            if (inlineMatch) {
+                hotkey = inlineMatch[1].toLowerCase()
+                const remainder = inlineMatch[2].trim()
+                if (remainder) {
+                    sLines[0] = remainder
+                } else {
+                    sLines.shift()
+                }
+                section = sLines.join("\n")
+            }
+
+            if (hotkey) sectionHotkeyMap.set(cleanedSections.length, hotkey)
+            cleanedSections.push(section)
+        })
+
+        sections = cleanedSections
+    }
 
     const autoGroups: boolean = get(special).autoGroups !== false
     // find chorus phrase
     const patterns = findPatterns(sections, autoGroups)
     sections = patterns.sections
     labeled = patterns.indexes.map((a, i) => ({ type: a, text: sections[i] || "" }))
+    // Attach explicit hotkeys to labeled items (before checkRepeats so repeats inherit the hotkey)
+    labeled = labeled.map((item, i) => {
+        const hotkey = sectionHotkeyMap.get(i)
+        return hotkey ? { ...item, hotkey } : item
+    })
     labeled = checkRepeats(labeled)
 
     if (!name) name = plainTextMetadata.title || trimNameFromString(labeled[0]?.text)
@@ -122,7 +169,7 @@ export function convertText({ name = "", origin = "", category = null, text, noF
     const show: Show = new ShowObj(false, category, layoutID)
     if (origin) show.origin = origin
     // , existingSlides
-    const { slides, layouts } = createSlides(labeled, noFormatting, autoGroups)
+    const { slides, layouts } = createSlides(labeled, noFormatting, autoGroups, autoAssignShortcuts)
 
     // if (onlySlides) return { slides, layouts }
 
@@ -321,9 +368,11 @@ function insertChordsIntoLyrics(chordLine: string, lyricLine: string): string {
 
 // TODO: this sometimes splits all slides up with no children (when adding [group])
 // , existingSlides = {}
-function createSlides(labeled: { type: string; text: string }[], noFormatting: boolean, autoGroups: boolean) {
+function createSlides(labeled: { type: string; text: string; hotkey?: string }[], noFormatting: boolean, autoGroups: boolean, autoAssignShortcuts = false) {
     const slides: { [key: string]: Slide } = {}
     const layouts: SlideData[] = []
+    // Tracks explicit <letter> hotkeys by parent slide id
+    const slideHotkeyMap = new Map<string, string>()
 
     let activeGroup: { type: string; id: string } | null = null
     const addedChildren: { [key: string]: string[] } = {}
@@ -334,6 +383,35 @@ function createSlides(labeled: { type: string; text: string }[], noFormatting: b
         if (!slides[parentId]) return
         slides[parentId].children = [...(slides[parentId]?.children || []), ...(children || [])]
     })
+
+    // Apply slide shortcuts:
+    //   - Explicit <letter> tags are ALWAYS applied regardless of the auto-assign toggle
+    //   - Sequential auto-assign (qwerty…) fills remaining slots only when the toggle is on
+    {
+        const usedKeys = new Set<string>(slideHotkeyMap.values())
+        const availableKeys = "qwertyuiopasdfghjklzxcvbnm".split("").filter((k) => !usedKeys.has(k))
+        let autoIndex = 0
+        const assignedIds = new Set<string>()
+
+        for (const layout of layouts) {
+            const slide = slides[layout.id]
+            if (!slide || slide.group === null) continue // skip children
+
+            const explicitKey = slideHotkeyMap.get(layout.id)
+            if (explicitKey) {
+                // Always apply explicit hotkeys
+                layout.actions = { ...(layout.actions || {}), slide_shortcut: { key: explicitKey } }
+                assignedIds.add(layout.id)
+            } else if (autoAssignShortcuts && !assignedIds.has(layout.id)) {
+                // Auto-fill remaining parent slides with sequential keys
+                if (autoIndex < availableKeys.length) {
+                    const key = availableKeys[autoIndex++]
+                    layout.actions = { ...(layout.actions || {}), slide_shortcut: { key } }
+                    assignedIds.add(layout.id)
+                }
+            }
+        }
+    }
 
     return removeSlideDuplicates(slides, layouts)
 
@@ -367,6 +445,8 @@ function createSlides(labeled: { type: string; text: string }[], noFormatting: b
         }
 
         id = uid()
+        // store explicit hotkey for this parent slide
+        if ((a as any).hotkey) slideHotkeyMap.set(id, (a as any).hotkey)
 
         if (hasTextGroup) activeGroup = { type: a.type, id }
 

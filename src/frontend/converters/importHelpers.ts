@@ -6,7 +6,7 @@ import type { Category } from "../../types/Tabs"
 import { history } from "../components/helpers/history"
 import { convertOldShowValues } from "../components/helpers/setShow"
 import { checkName } from "../components/helpers/show"
-import { actionTags, activeDrawerTab, activePopup, activeProject, activeRename, activeShow, alertMessage, categories, drawerTabsData, shows } from "../stores"
+import { actionTags, activeDrawerTab, activePopup, activeProject, activeRename, activeShow, alertMessage, autoShortcuts, categories, drawerTabsData, shows } from "../stores"
 import { newToast } from "../utils/common"
 import { convertText } from "./txt"
 
@@ -208,7 +208,7 @@ export function importFromClipboard() {
             let activeCategory = get(drawerTabsData).shows?.activeSubTab
             if (activeCategory === "all" || activeCategory === "unlabeled") activeCategory = null
 
-            convertText({ text, noFormatting: true, category: activeCategory })
+            convertText({ text, noFormatting: true, category: activeCategory, autoAssignShortcuts: get(autoShortcuts) })
         })
         .catch((err) => {
             console.error("Failed to read clipboard contents: ", err)

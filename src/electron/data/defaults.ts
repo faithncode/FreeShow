@@ -62,6 +62,7 @@ export const defaultSettings: { [key in SaveListSettings]: any } = {
     dataPath: "", // DEPRECATED
     lockedOverlays: [],
     splitLines: 0,
+    autoShortcuts: false,
     theme: "default",
     transitionData: {
         text: { type: "fade", duration: 500, easing: "sine" },
