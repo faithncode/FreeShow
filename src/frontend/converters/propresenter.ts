@@ -293,8 +293,9 @@ function safeParseJson(content: string): any {
 
 function resolveShowName(song: any, fallback: string): string {
     const cleanFallback = cleanSongName(fallback)
-    if (song.name === "Untitled") return cleanFallback
-    return song["@CCLISongTitle"] || song.name || song.title || cleanFallback
+    if (cleanFallback && cleanFallback !== "Untitled") return cleanFallback
+    if (song.name && song.name !== "Untitled") return song.name
+    return song.title || song["@CCLISongTitle"] || cleanFallback || "Untitled"
 }
 
 // ProPresenter often reuses the same id for duplicated songs — generate a fresh id
@@ -302,7 +303,8 @@ function resolveShowName(song: any, fallback: string): string {
 function resolveShowId(song: any, name: string, tempShows: any[]): string {
     const originalId = song["@uuid"] || song.uuid?.string || song._id || uid()
     const existingShow = get(shows)[originalId] || tempShows.find((a) => a.id === originalId)?.show
-    if (existingShow && existingShow.name !== (song.name || name)) return uid()
+    const expectedName = cleanSongName(name)
+    if (existingShow && existingShow.name !== expectedName) return uid()
     return originalId
 }
 
