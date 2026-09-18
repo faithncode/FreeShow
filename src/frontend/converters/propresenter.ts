@@ -1,20 +1,121 @@
 import { get } from "svelte/store"
 import { uid } from "uid"
+import type { Project, ProjectShowRef } from "../../types/Projects"
 import type { Item, Layout, Line, Slide, SlideData, Timeline } from "../../types/Show"
 import { DEFAULT_ITEM_STYLE } from "../components/edit/scripts/itemHelpers"
+import { history } from "../components/helpers/historyActions"
 import { getExtension, getFileName, getMediaType } from "../components/helpers/media"
 import { checkName, getGlobalGroup, initializeMetadata, newSlide } from "../components/helpers/show"
+import { openProjectItem } from "../components/show/project"
+import { newToast } from "../utils/common"
 import { translateText } from "../utils/language"
 import { ShowObj } from "./../classes/Show"
-import { activePopup, alertMessage, groups, shows } from "./../stores"
+import { activePopup, activeProject, alertMessage, groups, projects, projectView, shows } from "./../stores"
 import { createCategory, setTempShows } from "./importHelpers"
 import { xml2json } from "./xml"
 
-type ImportFile = { content: any; name: string; extension: string }
+type ImportFile = { content: any; name: string; extension: string; zipName?: string }
 type ConvertedShow = { slides: Record<string, Slide>; layouts: any[]; media?: Record<string, any> }
 
 const DEFAULT_GROUP = "verse"
 const PLACEHOLDER_TEXT = "Double-click to edit"
+
+interface PlaylistCue {
+    type: "show" | "section"
+    name: string
+    filePath?: string
+    uuid?: string
+}
+
+interface ParsedPlaylist {
+    title: string
+    cues: PlaylistCue[]
+}
+
+export function cleanSongName(name: string): string {
+    return name
+        .replace(/\\/g, "/")
+        .replace(/^.*[\\\/]/, "") // strip directories
+        .replace(/\.(pro6|pro6pl|pro|json)$/i, "") // strip extension
+        .trim()
+}
+
+export function parsePro6Playlist(content: string, fallbackTitle: string): ParsedPlaylist {
+    let title = fallbackTitle
+    const cues: PlaylistCue[] = []
+
+    try {
+        // Try to find the playlist title from RVPlaylistNode with type="3" (playlist node) or first non-root node
+        const playlistNodeMatch =
+            content.match(/<RVPlaylistNode[^>]*type="3"[^>]*displayName="([^"]+)"/i) ||
+            content.match(/<RVPlaylistNode[^>]*displayName="([^"]+)"[^>]*type="3"/i)
+        if (playlistNodeMatch && playlistNodeMatch[1]) {
+            title = playlistNodeMatch[1]
+        } else {
+            const genericNodeMatches = content.matchAll(/<RVPlaylistNode[^>]*displayName="([^"]+)"/gi)
+            for (const match of genericNodeMatches) {
+                if (match[1] && match[1].toLowerCase() !== "root") {
+                    title = match[1]
+                    break
+                }
+            }
+        }
+
+        // Extract cues and headers in order using regex matching
+        const tagRegex = /<(RVDocumentCue|RVPlaylistNode)\b([^>]*)\/?>/gi
+        let match: RegExpExecArray | null
+        while ((match = tagRegex.exec(content)) !== null) {
+            const tag = match[1]
+            const attrs = match[2]
+
+            const displayNameMatch = attrs.match(/displayName="([^"]*)"/i)
+            const filePathMatch = attrs.match(/filePath="([^"]*)"/i)
+            const typeMatch = attrs.match(/type="([^"]*)"/i)
+            const uuidMatch = attrs.match(/UUID="([^"]*)"/i)
+
+            const displayName = displayNameMatch ? displayNameMatch[1] : ""
+            const rawFilePath = filePathMatch ? filePathMatch[1] : ""
+            const nodeType = typeMatch ? typeMatch[1] : ""
+            const uuid = uuidMatch ? uuidMatch[1] : ""
+
+            if (tag.toLowerCase() === "rvdocumentcue") {
+                let decodedPath = rawFilePath
+                try {
+                    decodedPath = decodeURIComponent(rawFilePath)
+                } catch {
+                    // keep raw
+                }
+
+                let name = displayName
+                if (!name && decodedPath) {
+                    name = decodedPath.replace(/^.*[\\\/]/, "")
+                }
+                name = cleanSongName(name)
+                if (name) {
+                    cues.push({ type: "show", name, filePath: decodedPath, uuid })
+                }
+            } else if (tag.toLowerCase() === "rvplaylistnode" && nodeType === "2") {
+                if (displayName && displayName.toLowerCase() !== "root") {
+                    cues.push({ type: "section", name: displayName, uuid })
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Error parsing Pro6 playlist XML:", e)
+    }
+
+    return { title, cues }
+}
+
+function checkProjectName(name: string): string {
+    const existingNames = Object.values(get(projects) || {}).map((p: any) => p?.name)
+    if (!existingNames.includes(name)) return name
+    let count = 2
+    while (existingNames.includes(`${name} ${count}`)) {
+        count++
+    }
+    return `${name} ${count}`
+}
 
 export function convertProPresenter(data: ImportFile[]) {
     alertMessage.set("popup.importing")
@@ -25,12 +126,102 @@ export function convertProPresenter(data: ImportFile[]) {
     const tempShows: any[] = []
 
     setTimeout(() => {
-        files?.forEach((file) => {
-            const show = importFile(file, categoryId, tempShows)
-            if (show) tempShows.push(show)
+        // Detect playlist document
+        const playlistFile = files?.find((f) => {
+            if (f.extension === "pro6pl" && typeof f.content === "string" && (f.content.includes("<RVPlaylistDocument") || f.content.includes('rvXMLIvarName="rootNode"'))) {
+                return true
+            }
+            return false
         })
 
-        setTempShows(tempShows)
+        const zipArchiveName = files?.find((f) => f.zipName)?.zipName || ""
+        const isPlaylistImport = Boolean(playlistFile || zipArchiveName)
+
+        let parsedPlaylist: ParsedPlaylist | null = null
+        if (playlistFile) {
+            parsedPlaylist = parsePro6Playlist(playlistFile.content, zipArchiveName || cleanSongName(playlistFile.name))
+        } else if (zipArchiveName) {
+            parsedPlaylist = { title: zipArchiveName, cues: [] }
+        }
+
+        const importedShowsMap = new Map<string, { id: string; name: string }>()
+
+        files?.forEach((file) => {
+            // Do not convert the playlist definition file itself into a song
+            if (file === playlistFile) return
+
+            try {
+                const result = importFile(file, categoryId, tempShows)
+                if (result) {
+                    tempShows.push(result)
+                    const showInfo = { id: result.id, name: result.show.name }
+                    const cleanFileName = cleanSongName(file.name).toLowerCase()
+                    const cleanShowName = result.show.name.toLowerCase()
+                    importedShowsMap.set(cleanFileName, showInfo)
+                    importedShowsMap.set(cleanShowName, showInfo)
+
+                    const ccli = result.show.meta?.title?.toLowerCase()
+                    if (ccli) importedShowsMap.set(ccli, showInfo)
+                }
+            } catch (err) {
+                console.error("Error importing ProPresenter file:", file.name, err)
+            }
+        })
+
+        if (isPlaylistImport && tempShows.length) {
+            const projectShows: ProjectShowRef[] = []
+            const placedShowIds = new Set<string>()
+
+            if (parsedPlaylist && parsedPlaylist.cues.length) {
+                parsedPlaylist.cues.forEach((cue) => {
+                    if (cue.type === "section") {
+                        projectShows.push({ id: uid(5), type: "section", name: cue.name })
+                    } else {
+                        const targetName = cue.name.toLowerCase()
+                        const found = importedShowsMap.get(targetName)
+                        if (found) {
+                            projectShows.push({ id: found.id, name: found.name, type: "show" })
+                            placedShowIds.add(found.id)
+                        }
+                    }
+                })
+            }
+
+            // Append any imported shows that were not explicitly listed in cues
+            tempShows.forEach(({ id, show }) => {
+                if (!placedShowIds.has(id)) {
+                    projectShows.push({ id, name: show.name, type: "show" })
+                }
+            })
+
+            // Save all shows to database
+            setTempShows(tempShows, { suppressFinishedToast: true })
+
+            // Create and save project
+            const playlistTitle = checkProjectName(parsedPlaylist?.title || zipArchiveName || "ProPresenter Playlist")
+            const projectId = uid()
+            const project: Project = {
+                name: playlistTitle,
+                created: Date.now(),
+                used: Date.now(),
+                parent: "/",
+                shows: projectShows
+            }
+
+            history({ id: "UPDATE", newData: { data: project }, oldData: { id: projectId }, location: { page: "show", id: "project" } })
+            activeProject.set(projectId)
+            projectView.set(false)
+
+            if (projectShows.length) {
+                setTimeout(() => {
+                    openProjectItem(projectId, 0)
+                }, 100)
+            }
+
+            newToast("main.finished")
+        } else {
+            setTempShows(tempShows)
+        }
     }, 50)
 }
 
@@ -83,7 +274,12 @@ function importFile({ content, name, extension }: ImportFile, categoryId: string
 function parseSong(content: any, extension: string): any | null {
     if (extension === "json" || extension === "pro") return safeParseJson(content)
     if (extension === "jsonbundle") return content
-    return xml2json(content)?.RVPresentationDocument
+    try {
+        return xml2json(content)?.RVPresentationDocument
+    } catch (err) {
+        console.error("Error parsing ProPresenter XML for song:", err)
+        return null
+    }
 }
 
 function safeParseJson(content: string): any {
@@ -96,8 +292,9 @@ function safeParseJson(content: string): any {
 }
 
 function resolveShowName(song: any, fallback: string): string {
-    if (song.name === "Untitled") return fallback
-    return song.name || song.title || fallback
+    const cleanFallback = cleanSongName(fallback)
+    if (song.name === "Untitled") return cleanFallback
+    return song["@CCLISongTitle"] || song.name || song.title || cleanFallback
 }
 
 // ProPresenter often reuses the same id for duplicated songs — generate a fresh id
@@ -237,14 +434,33 @@ function convertToSlides(song: any, extension: string): ConvertedShow {
     const sequences: Record<string, string> = {}
     const backgrounds: any[] = []
 
+    // bgIndex is the global index into layouts[0].slides (increments per parent)
+    let bgIndex = -1
+
     slideGroups.forEach((group: any) => {
         const groupSlides = getGroupSlides(group, extension)
         if (!groupSlides.length) return
 
+        // slideIndex tracks position within the current section (parent + its children).
+        // Resetting it to -1 causes the next slide to become a new parent.
         let slideIndex = -1
+        // uuid used for sequences mapping — reset each time a new parent is created within the group
+        let currentGroupUuid = group["@uuid"] || uid()
+        let isFirstSectionInGroup = true
+
         groupSlides.forEach((slide: any) => {
             const items = getSlideItems(slide)
             if (!items.length) return
+
+            const slideHotKey = (slide["@hotKey"] as string | undefined)?.trim() || ""
+
+            // A hotKey on any non-first slide means it starts a brand-new section (new parent)
+            if (slideIndex >= 0 && slideHotKey) {
+                slideIndex = -1
+                currentGroupUuid = slide["@UUID"] || uid()
+                isFirstSectionInGroup = false
+            }
+
             slideIndex++
 
             const slideId = uid()
@@ -252,19 +468,27 @@ function convertToSlides(song: any, extension: string): ConvertedShow {
             slides[slideId] = newSlide({ notes: slide["@notes"] || "", items })
 
             const background = extractSlideBackground(slide)
-            if (background) backgrounds[slideIndex] = background
 
             if (slideIndex === 0) {
-                const parent: any = slides[slideId]
-                slides[slideId] = makeParentSlide(parent, {
-                    label: group["@name"] || parent["@label"] || "",
-                    color: group["@color"] || parent["@highlightColor"]
-                })
+                bgIndex++
+                if (background) backgrounds[bgIndex] = background
 
-                sequences[group["@uuid"]] = slideId
+                const parent: any = slides[slideId]
+                // Use slide-level label/color for hotkey-split sections; fall back to group metadata
+                const label = slide["@label"] || slideHotKey || (isFirstSectionInGroup ? group["@name"] || "" : "")
+                const color = slideHotKey ? slide["@highlightColor"] || group["@color"] || "" : group["@color"] || slide["@highlightColor"] || ""
+                slides[slideId] = makeParentSlide(parent, { label, color })
+
+                sequences[currentGroupUuid] = slideId
+                isFirstSectionInGroup = false
 
                 const layoutSlide: any = { id: slideId }
                 if (isDisabled) layoutSlide.disabled = true
+
+                // Apply hotKey as a slide shortcut
+                const hotKey = (slideHotKey || (group["@hotKey"] as string | undefined) || "").toLowerCase()
+                if (hotKey) layoutSlide.actions = { slide_shortcut: { key: hotKey } }
+
                 layouts[0].slides.push(layoutSlide)
             } else {
                 addChildSlide(slides, layouts[0], slideId, isDisabled)
@@ -282,20 +506,91 @@ function convertToSlides(song: any, extension: string): ConvertedShow {
     return { slides, layouts, media }
 }
 
+
 function getSlideGroups(song: any, extension: string): any[] {
     let slideGroups: any = []
     if (extension === "pro4") slideGroups = song.slides?.RVDisplaySlide || []
     if (extension === "pro5") slideGroups = song.groups?.RVSlideGrouping || []
-    if (extension === "pro6") slideGroups = song.array?.[0]?.RVSlideGrouping || []
+    if (extension === "pro6" || extension === "pro6pl") slideGroups = song.array?.[0]?.RVSlideGrouping || []
     if (!Array.isArray(slideGroups)) slideGroups = slideGroups ? [slideGroups] : []
+
+    // Flat-slide fallback: pro6pl playlist files and some pro6 exports have no RVSlideGrouping.
+    // In this layout all RVDisplaySlide elements sit at the root; a hotKey or a meaningful
+    // highlightColor on a slide signals the start of a new group/verse.
+    if (!slideGroups.length && (extension === "pro6" || extension === "pro6pl")) {
+        slideGroups = getFlatPro6Groups(song)
+    }
+
     return slideGroups
 }
 
+/** Group flat RVDisplaySlide elements (no RVSlideGrouping) by hotKey / highlightColor. */
+function getFlatPro6Groups(song: any): any[] {
+    // Collect every RVDisplaySlide found anywhere in song.array
+    const allSlides: any[] = []
+    const arr = song.array || []
+    ;(Array.isArray(arr) ? arr : [arr]).forEach((section: any) => {
+        const slides = section?.RVDisplaySlide
+        if (!slides) return
+        const asArray = Array.isArray(slides) ? slides : [slides]
+        allSlides.push(...asArray)
+    })
+
+    if (!allSlides.length) return []
+
+    const groups: any[] = []
+    let current: any[] = []
+
+    allSlides.forEach((slide: any) => {
+        const hotKey: string = slide["@hotKey"] || ""
+        const highlightColor: string = slide["@highlightColor"] || ""
+        const isGroupBoundary = hotKey || isSignificantColor(highlightColor)
+
+        if (isGroupBoundary && current.length) {
+            groups.push(buildSyntheticGroup(current))
+            current = []
+        }
+        current.push(slide)
+    })
+    if (current.length) groups.push(buildSyntheticGroup(current))
+
+    return groups
+}
+
+/** Returns true when a ProPresenter color string represents something other than transparent/black/white. */
+function isSignificantColor(color: string): boolean {
+    if (!color) return false
+    const parts = color.split(" ").map(Number)
+    if (parts.length < 3 || isNaN(parts[0])) return false
+    const [r, g, b, a] = parts
+    if (a === 0) return false // transparent
+    const isBlack = r < 0.05 && g < 0.05 && b < 0.05
+    const isWhite = r > 0.95 && g > 0.95 && b > 0.95
+    return !isBlack && !isWhite
+}
+
+function buildSyntheticGroup(slides: any[]): any {
+    const first = slides[0]
+    const hotKey: string = first["@hotKey"] || ""
+    const color: string = first["@highlightColor"] || ""
+    const name: string = first["@label"] || hotKey || ""
+    return {
+        "@name": name,
+        "@color": color,
+        "@hotKey": hotKey,
+        "@uuid": first["@UUID"] || uid(),
+        slides // stored directly — consumed by getGroupSlides
+    }
+}
+
 function getGroupSlides(group: any, extension: string): any[] {
+    // Synthetic groups (from getFlatPro6Groups) store slides under a plain .slides array
+    if (Array.isArray(group.slides)) return group.slides
+
     let groupSlides = group
     if (extension === "pro4") groupSlides = [groupSlides]
-    if (extension === "pro5") groupSlides = groupSlides.slides.RVDisplaySlide
-    if (extension === "pro6" && groupSlides.array) groupSlides = groupSlides.array.RVDisplaySlide
+    if (extension === "pro5") groupSlides = groupSlides.slides?.RVDisplaySlide
+    if ((extension === "pro6" || extension === "pro6pl") && groupSlides.array) groupSlides = groupSlides.array.RVDisplaySlide
     if (!Array.isArray(groupSlides)) groupSlides = groupSlides ? [groupSlides] : []
     return groupSlides
 }

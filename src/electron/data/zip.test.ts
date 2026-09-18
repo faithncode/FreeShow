@@ -42,10 +42,6 @@ describe("compressToZip", () => {
         fs.rmSync(zipPath, { force: true })
     })
 
-    afterAll(() => {
-        fs.rmSync(h.tempRoot, { recursive: true, force: true })
-    })
-
     it("skips a store that has no file on disk instead of failing the whole zip", async () => {
         // electron-store only writes a store's file on the first set(), so a store
         // that never got any value (e.g. OVERLAYS) has no file at all — see backup.ts
@@ -106,5 +102,62 @@ describe("compressToZip", () => {
         // nothing should remove it after the fact
         await new Promise((resolve) => setTimeout(resolve, 100))
         expect(fs.existsSync(zipPath)).toBe(true)
+    })
+})
+
+describe("decompressZip & decompressZipManual", () => {
+    beforeEach(() => {
+        fs.rmSync(zipPath, { force: true })
+    })
+
+    it("decompressZip returns entries with zipName", async () => {
+        const { decompressZip } = await import("./zip")
+        const entries = [
+            { name: "Song1.pro6", content: "<RVPresentationDocument />" },
+            { name: "data.pro6pl", content: "<RVPlaylistDocument />" }
+        ]
+        await compressToZip(entries, zipPath)
+
+        const files = await decompressZip([zipPath])
+        expect(files.length).toBe(2)
+        expect(files[0].zipName).toBe("out")
+        expect(files[0].name).toBe("Song1.pro6")
+        expect(files[0].extension).toBe("pro6")
+        expect(files[0].content).toBe("<RVPresentationDocument />")
+    })
+
+    it("decompressZipManual extracts entries without crashing", async () => {
+        const { decompressZipManual } = await import("./zip")
+        const entries = [
+            { name: "Folder/Song1.pro6", content: "hello world pro6" },
+            { name: "Folder/data.pro6pl", content: "playlist xml content" }
+        ]
+        await compressToZip(entries, zipPath)
+
+        const files = decompressZipManual(zipPath)
+        expect(files.length).toBe(2)
+        expect(files.map((f) => f.name).sort()).toEqual(["Folder/Song1.pro6", "Folder/data.pro6pl"].sort())
+        expect(files.find((f) => f.name === "Folder/Song1.pro6")?.content).toBe("hello world pro6")
+    })
+
+    it("decompressZip automatically recovers via manual fallback when central directory is corrupted", async () => {
+        const { decompressZip } = await import("./zip")
+        const entries = [{ name: "MyPlaylist/Song.pro6", content: "<RVPresentationDocument />" }]
+        await compressToZip(entries, zipPath)
+
+        // Corrupt the central directory by truncating the last 80 bytes
+        const originalBytes = fs.readFileSync(zipPath)
+        const corruptPath = path.join(h.tempRoot, "corrupted.pro6plx")
+        fs.writeFileSync(corruptPath, originalBytes.subarray(0, originalBytes.length - 80))
+
+        const files = await decompressZip([corruptPath])
+        expect(files.length).toBe(1)
+        expect(files[0].name).toBe("MyPlaylist/Song.pro6")
+        expect(files[0].content).toBe("<RVPresentationDocument />")
+        expect(files[0].zipName).toBe("corrupted")
+    })
+
+    afterAll(() => {
+        fs.rmSync(h.tempRoot, { recursive: true, force: true })
     })
 })

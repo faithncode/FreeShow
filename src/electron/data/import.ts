@@ -119,7 +119,7 @@ export async function importShow(id: string, files: string[] | null) {
         return
     }
 
-    const zip = ["zip", "probundle", "vpc", "qsp"]
+    const zip = ["zip", "probundle", "vpc", "qsp", "pro6plx"]
     const zipFiles = files.filter((a) => zip.includes(a.slice(a.lastIndexOf(".") + 1).toLowerCase()))
     if (zipFiles.length) {
         data = await decompressZip(zipFiles)
