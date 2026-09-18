@@ -408,7 +408,7 @@ export class PowerPointPackage {
 
         let items = slideTree.map((n, i) => this.shapeToItem(n, { presentation, slide, layout, master, theme, colors, scale, slideNumber }, i)).filter(Boolean) as Item[]
 
-        // add SVG textboxes
+        // add SVG textboxes on top of the background SVG shape
         this.extraItems
             .sort((a, b) => b.index - a.index)
             .forEach(({ index, item }) => {
@@ -433,10 +433,22 @@ export class PowerPointPackage {
         let bgColor = resolveColor(getValue(bgPr, "a:solidFill"), colors) || resolveGradient(getValue(bgPr, "a:gradFill"), colors) || resolveColor(getValue(bgPr, "a:pattFill", "a:bgClr"), colors) || resolveColor(bgRef, colors) || "#FFFFFF"
 
         // slide background image
-        const bgFill = getValue(bgPr, "a:blipFill")
+        let bgPart: SlidePart | SlideLayoutPart | SlideMasterPart | null = null
+        let bgFill: any[] = []
+
+        for (const part of [slide, layout, master]) {
+            if (!part) continue
+            const sld = getValue(part.json, part === slide ? "p:sld" : part === layout ? "p:sldLayout" : "p:sldMaster")
+            const blip = getValue(sld, "p:cSld", "p:bg", "p:bgPr", "a:blipFill")
+            if (blip.length) {
+                bgFill = blip
+                bgPart = part
+                break
+            }
+        }
 
         const bgImgId = getAttribute(bgFill, "r:embed", "a:blip") || getAttribute(bgFill, "r:link", "a:blip")
-        const bgImage = bgImgId ? this.getMediaPath(bgImgId, bgPart || { slide, layout, master }) : null
+        const bgImage = this.getMediaPath(bgImgId, bgPart || { slide, layout, master })
         if (bgImage) {
             // image can be stretched into a smaller rectangle
             const fillRect = getAttributes(getValue(bgFill, "a:stretch"), "a:fillRect")
@@ -541,7 +553,7 @@ export class PowerPointPackage {
     }
 
     private shapeToItem(
-        shape: RenderShape,
+        shape: { name: string; shape: Shape; pos: Position; layoutShape: Shape; masterShape: Shape; txStyles: any[]; isDecoration?: boolean; part?: OpcPart },
         ctx: {
             presentation: PresentationPart
             slide: SlidePart
@@ -841,9 +853,45 @@ export class PowerPointPackage {
                         getValue(shape.masterShape, "p:txBody", "a:p", "a:endParaRPr", "a:solidFill")
                     ].filter((f) => f.length)
 
-                    const sharedStyle = getSharedStyle(levels)
+                    // let pPrL = getValue(pL[i] ? pL[i] : pL[0], "a:p", "a:pPr")
+                    // let pPrM = getValue(pM[i] ? pM[i] : pM[0], "a:p", "a:pPr")
+                    // pPrL/pPrM are the CHILDREN of <a:lvl${lvl}pPr>, used for nested tags.
+                    // For attributes (algn, marL, indent) we need the parent lstStyle array:
+                    const lstStyleL = getValue(pL[i] ? pL[i] : pL[0], "a:lstStyle")
+                    const lstStyleM = getValue(pM[i] ? pM[i] : pM[0], "a:lstStyle")
+                    const pPrL = getValue(pL[i] ? pL[i] : pL[0], "a:lstStyle", `a:lvl${lvl}pPr`)
+                    const pPrM = getValue(pM[i] ? pM[i] : pM[0], "a:lstStyle", `a:lvl${lvl}pPr`)
+                    let tx = getValue(shape.txStyles, `a:lvl${lvl}pPr`)
+                    if (!tx.length) tx = getValue(shape.txStyles, "a:defPPr")
 
-                    const rs: { rPr: PropLevel | null; value: string }[] = []
+                    const sharedStyle = getSharedStyle(pPr, pPrL, pPrM)
+
+                    // let marL: string | number = getAttribute(pPr, "marL") || "0"
+                    // marL = round(emuToPixels(marL)) * ctx.scale.factor
+                    // let indent: string | number = getAttribute(pPr, "indent") || "0"
+                    // indent = round(emuToPixels(indent)) * ctx.scale.factor
+                    // // indent is typically negative
+                    // if (indent < 0) indent = Math.abs(indent)
+
+                    const buFont = getAttribute(pPr, "typeface", "a:buFont") || getAttribute(pPrL, "typeface", "a:buFont") || getAttribute(pPrM, "typeface", "a:buFont") || "Calibri"
+                    const buSize = getAttribute(pPr, "val", "a:buSzPts") || getAttribute(pPrL, "val", "a:buSzPts") || getAttribute(pPrM, "val", "a:buSzPts") || getAttribute(getValue(line, "a:r"), "sz")
+                    const buClr = resolveColor(getValue(pPr, "a:buClr"), ctx.colors) || resolveColor(getValue(pPrL, "a:buClr"), ctx.colors) || resolveColor(getValue(pPrM, "a:buClr"), ctx.colors)
+                    const buChar = getAttribute(pPr, "char", "a:buChar") || getAttribute(pPrL, "char", "a:buChar") || getAttribute(pPrM, "char", "a:buChar")
+                    const autoNum = getAttribute(pPr, "type", "a:buAutoNum") || getAttribute(pPrL, "type", "a:buAutoNum") || getAttribute(pPrM, "type", "a:buAutoNum")
+                    let marL = Number(getAttribute(pPr, "marL") || getAttribute(lstStyleL, "marL", `a:lvl${lvl}pPr`) || getAttribute(lstStyleM, "marL", `a:lvl${lvl}pPr`) || "0")
+                    let indent = Number(getAttribute(pPr, "indent") || getAttribute(lstStyleL, "indent", `a:lvl${lvl}pPr`) || getAttribute(lstStyleM, "indent", `a:lvl${lvl}pPr`) || "0")
+                    let padLeft = marL ? round(emuToPixels(Math.max(0, marL + indent)) * (ctx.scale.x ?? 1)) : 0
+                    let padRight = indent < 0 ? round(emuToPixels(Math.abs(indent)) * (ctx.scale.x ?? 1)) : 16
+                    if (!padRight || padRight < 8) padRight = 16
+                    let bulletPadding = `padding-left: ${padLeft}px;padding-right: ${padRight}px;`
+                    const startAt = Number(getAttribute(pPr, "startAt", "a:buAutoNum") || getAttribute(pPrL, "startAt", "a:buAutoNum") || getAttribute(pPrM, "startAt", "a:buAutoNum") || "1")
+                    let bullet = buChar || autoNum ? { value: buChar, style: `font-family: ${buFont};font-size: ${ptsToPx(buSize) || 24}px;color: ${buClr || "#000000"};${bulletPadding}` } : null
+
+                    // WIP split "a:br" properly as it breaks when style is changed
+
+                    // const rs = getValues(line, "a:r")
+                    // const br = getValues(line, "a:br")
+                    const rs: any[][] = []
                     line.forEach((l) => {
                         if (l["a:r"])
                             rs.push({
@@ -871,24 +919,19 @@ export class PowerPointPackage {
                                 value: "<br>"
                             })
                     })
-                    const endParaRPr = toLevel(
-                        line.find((a) => a?.["a:endParaRPr"]),
-                        "a:endParaRPr"
-                    )
-                    const firstRun = getRunInfo(rs.length ? rs[0].rPr : endParaRPr, levels, parentRuns)
-                    const bullet = getBullet(levels, firstRun)
-
-                    const algn = getLevelAttr(levels, "algn") || (svgText ? "ctr" : "")
+                    // algn is an attribute of <a:lvl${lvl}pPr> itself, not its children.
+                    // pPrL holds the children, so we must read algn from the parent lstStyle array.
+                    const algn = getAttribute(pPr, "algn") || getAttribute(lstStyleL, "algn", `a:lvl${lvl}pPr`) || getAttribute(lstStyleM, "algn", `a:lvl${lvl}pPr`) || getAttribute(tx, "algn") || getAttribute(line, "algn") || (svgText ? "ctr" : "")
 
                     if (i === 0) hasText = false
                     if (rs.length) hasText = true
 
                     function getAlignment(algn: string) {
-                        if (algn === "ctr") return "" // FreeShow default is center
+                        if (algn === "ctr") return "text-align: center;"
                         if (algn === "r") return "text-align: right;"
-                        if (algn === "just" || algn === "dist") return "text-align: justify;"
+                        if (algn === "just") return "text-align: justify;"
                         if (algn === "l") return "text-align: left;"
-                        return svgText ? "" : "text-align: left;" // PPT default is left
+                        return svgText ? "text-align: center;" : "text-align: left;"
                     }
 
                     let text = rs.length
@@ -905,6 +948,34 @@ export class PowerPointPackage {
                                 prev.value += seg.value
                             } else {
                                 mergedText.push({ ...seg })
+                            }
+                        }
+                        text = mergedText
+                    }
+
+                    if (text.length && bullet) {
+                        text = [autoNum ? { ...bullet, value: getBulletValue(autoNum, bulletNum + startAt - 1) } : bullet, ...text]
+                        bulletNum++
+
+                        function getBulletValue(type: string, index: number) {
+                            if (type === "arabicPeriod") return `${index + 1}.`
+                            if (type === "alphaLcPeriod") return `${String.fromCharCode(97 + index)}.`
+                            if (type === "alphaUcPeriod") return `${String.fromCharCode(65 + index)}.`
+                            if (type === "romanLcPeriod") return `${toRoman(index + 1).toLowerCase()}.`
+                            if (type === "romanUcPeriod") return `${toRoman(index + 1).toUpperCase()}.`
+                            return "•"
+
+                            function toRoman(num: number) {
+                                const val = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
+                                const syms = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"]
+                                let roman = ""
+                                for (let i = 0; i < val.length; i++) {
+                                    while (num >= val[i]) {
+                                        num -= val[i]
+                                        roman += syms[i]
+                                    }
+                                }
+                                return roman
                             }
                         }
                         text = mergedText
@@ -930,12 +1001,13 @@ export class PowerPointPackage {
             "p:sp": "text",
             "p:pic": "media",
             "p:graphicFrame": "chart",
-            "p:cxnSp": "text" // "shape"
+            "p:cxnSp": "icon"
         }
 
         const type2 = types[shape.name] || "icon"
 
-        let style = "overflow: visible;" // PPT shows overflow text
+        // overflow: visible lets non-Latin descenders (Tamil, etc.) breathe outside tight boxes
+        let style = "box-sizing: border-box; overflow: visible;"
 
         // placeholders inherit shape properties from the layout/master placeholder
         const spPr = mergeShapeProperties([shape.shape, shape.layoutShape, shape.masterShape].map((s) => getValue(s, "p:spPr")))
@@ -956,27 +1028,20 @@ export class PowerPointPackage {
             style
         }
 
-        // placeholders without their own transform use the layout/master position
-        let basePos = shape.pos
-        if (basePos.width + basePos.height + basePos.left + basePos.top === 0) basePos = getPosition(shape.layoutShape)
-        if (basePos.width + basePos.height + basePos.left + basePos.top === 0) basePos = getPosition(shape.masterShape)
+        // auto size
+        const bodyPrs = [getValue(shape.shape, "p:txBody", "a:bodyPr"), getValue(shape.layoutShape, "p:txBody", "a:bodyPr"), getValue(shape.masterShape, "p:txBody", "a:bodyPr")]
+        const hasNormAutofit = bodyPrs.some((b) => b?.some?.((n: any) => n.hasOwnProperty("a:normAutofit")))
+        const hasSpAutoFit = bodyPrs.some((b) => b?.some?.((n: any) => n.hasOwnProperty("a:spAutoFit")))
+        if (hasNormAutofit || hasSpAutoFit) item.textFit = "shrinkToFit"
 
-        const bodyPrs = [shape.shape, shape.layoutShape, shape.masterShape].map((s) => getAttributes(getValue(s, "p:txBody"), "a:bodyPr"))
-
-        // shape fill: explicit fill, otherwise the theme style reference
-        const getShapeFill = (): { color?: string; gradient?: any[] } => {
-            if (shape.attrs?.useBgFill === "1" || hasChild(spPr, "a:noFill")) return {}
-            const solid = getValue(spPr, "a:solidFill")
-            if (solid.length) return { color: resolveColor(solid, ctx.colors) || "" }
-            const gradient = getValue(spPr, "a:gradFill")
-            if (gradient.length) return { gradient }
-            const pattern = getValue(spPr, "a:pattFill", "a:fgClr")
-            if (pattern.length) return { color: resolveColor(pattern, ctx.colors) || "" }
-            if (hasChild(spPr, "a:blipFill") || hasChild(spPr, "a:grpFill")) return {}
-
-            const fillRefIdx = Number(getAttribute(shapeStyle, "idx", "a:fillRef") || "0")
-            if (fillRefIdx > 0) return { color: resolveColor(getValue(shapeStyle, "a:fillRef"), ctx.colors) || "" }
-            return {}
+        const itemAlign = getAttribute(shape.shape, "anchor", "p:txBody") || getAttribute(getValue(shape.shape, "p:txBody"), "anchor", "a:bodyPr") || getAttribute(getValue(shape.layoutShape, "p:txBody"), "anchor", "a:bodyPr") || getAttribute(getValue(shape.masterShape, "p:txBody"), "anchor", "a:bodyPr") || ""
+        item.align = getItemAlign(itemAlign)
+        function getItemAlign(anchor: string) {
+            if (anchor === "ctr") return ""
+            if (anchor === "b") return "align-items: flex-end;"
+            if (anchor === "t") return "align-items: flex-start;"
+            if (svgText) return ""
+            return "align-items: flex-start;"
         }
 
         // shape outline: explicit line, otherwise the theme style reference
@@ -984,39 +1049,8 @@ export class PowerPointPackage {
             const ln = getValue(spPr, "a:ln")
             if (hasChild(ln, "a:noFill")) return null
 
-            let color = resolveColor(getValue(ln, "a:solidFill"), ctx.colors) || resolveColor(getValue(ln, "a:gradFill", "a:gsLst")[0]?.["a:gs"], ctx.colors)
-            let width = getAttribute(spPr, "w", "a:ln")
-
-            const lnRefIdx = Number(getAttribute(shapeStyle, "idx", "a:lnRef") || "0")
-            if (!color && lnRefIdx > 0) {
-                color = resolveColor(getValue(shapeStyle, "a:lnRef"), ctx.colors)
-                if (!width) width = getValue(ctx.theme?.formatScheme || [], "a:lnStyleLst")[lnRefIdx - 1]?.[":@"]?.w || ""
-            }
-            if (!color) return null
-
-            return { color, width: emuToPixels(width || 12700), ln }
-        }
-
-        // auto size (shrinkToFit changes the font size even when it's not overflowing)
-        // const hasNormAutofit = bodyPrs.some((b) => b?.some?.((n: any) => n.hasOwnProperty("a:normAutofit")))
-        // const hasSpAutoFit = bodyPrs.some((b) => b?.some?.((n: any) => n.hasOwnProperty("a:spAutoFit")))
-        // if (hasNormAutofit || hasSpAutoFit) item.textFit = "shrinkToFit"
-
-        const itemAlign = getAttribute(shape.shape, "anchor", "p:txBody") || getAttribute(getValue(shape.shape, "p:txBody"), "anchor", "a:bodyPr") || getAttribute(getValue(shape.layoutShape, "p:txBody"), "anchor", "a:bodyPr") || getAttribute(getValue(shape.masterShape, "p:txBody"), "anchor", "a:bodyPr") || ""
-        item.align = getItemAlign(itemAlign) + "overflow: visible;" // PPT shows overflow text
-        function getItemAlign(anchor: string) {
-            if (anchor === "ctr") return "" // FreeShow default is center alignment
-            if (anchor === "b") return "align-items: flex-end;"
-            if (anchor === "t") return "align-items: flex-start;"
-            if (svgText) return ""
-            return "align-items: flex-start;" // PPT default is top alignment
-        }
-
-        const pptShapeToNormalizedSvg = (image?: string): string | null => {
             let prstGeom = getAttribute(spPr, "prst", "a:prstGeom")
             if (!prstGeom && shape.name === "p:cxnSp") prstGeom = "line"
-            // const prstGeom = spPr["a:prstGeom"]?.[0].$?.prst
-            // if (!prstGeom || prstGeom === "rect") return null
 
             const pos = basePos
             // const xfrm = getValue(spPr, "a:xfrm")
@@ -1044,11 +1078,12 @@ export class PowerPointPackage {
             let strokeLinejoin = ""
             let strokeMiterlimit = 0
 
-            const outline = getShapeStroke()
-            if (outline) {
-                stroke = outline.color
-                strokeWidth = Math.max(1, round((outline.width || 1) * (ctx.scale?.factor ?? 1)))
-                const ln = outline.ln
+            const lineFill = getValue(spPr, "a:ln", "a:solidFill")
+            if (lineFill.length) {
+                stroke = resolveColor(lineFill, ctx.colors) || "none"
+                const lnW = getAttribute(spPr, "w", "a:ln") || "0"
+                strokeWidth = Math.max(1, round((emuToPixels(lnW) || 1) * (ctx.scale?.factor ?? 1)))
+                const ln = getValue(spPr, "a:ln")
                 // Dash style
                 const dashVal = getAttribute(ln, "val", "a:prstDash")
                 if (dashVal && dashVal !== "solid") {
@@ -1070,17 +1105,16 @@ export class PowerPointPackage {
                     const miterLim = getAttribute(ln, "lim", "a:miter")
                     strokeMiterlimit = miterLim ? Math.max(1, parseFloat(miterLim) / 100000) : 4
                 }
-            } else if (shape.name === "p:cxnSp" && !hasChild(getValue(spPr, "a:ln"), "a:noFill")) {
-                stroke = "#ffffff"
+            } else if (shape.name === "p:cxnSp") {
+                stroke = resolveColor(getValue(spPr, "a:ln", "a:schemeClr"), ctx.colors) || "#ffffff"
                 strokeWidth = 1
             }
-            // WIP stroke is overflowing outside of item
 
             if (fill === "none" && stroke === "none" && !image) return null
 
             let svgAttributes = `fill="${fill}"`
             if (stroke !== "none") svgAttributes += ` stroke="${stroke}"`
-            if (strokeWidth && stroke !== "none") svgAttributes += ` stroke-width="${strokeWidth}"`
+            if (strokeWidth && stroke !== "none") svgAttributes += ` stroke-width="${strokeWidth}" vector-effect="non-scaling-stroke"`
             if (strokeDasharray) svgAttributes += ` stroke-dasharray="${strokeDasharray}"`
             if (strokeLinecap) svgAttributes += ` stroke-linecap="${strokeLinecap}"`
             if (strokeLinejoin) svgAttributes += ` stroke-linejoin="${strokeLinejoin}"`
@@ -1177,8 +1211,18 @@ export class PowerPointPackage {
                 return null
             }
 
-            // rectangle pictures are regular media items
-            if (prstGeom === "rect" && image) return null
+            // Define shapes
+            if (prstGeom === "rect") {
+                if (fill === "none" && stroke === "none") return null
+                return `<svg data-shape="rect" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1" preserveAspectRatio="none" style="position: absolute; width: 100%; height: 100%;">
+                            <rect 
+                                ${svgAttributes}
+                                x="0" 
+                                y="0" 
+                                width="1" 
+                                height="1" />
+                        </svg>`
+            }
 
             // adjustment values (e.g. <a:gd name="adj" fmla="val 50000"/>)
             const adjustments: { [key: string]: number } = {}
@@ -1187,15 +1231,12 @@ export class PowerPointPackage {
                 if (name && typeof fmla === "string" && fmla.startsWith("val ")) adjustments[name] = parseFloat(fmla.slice(4))
             })
 
-            // shape definitions from the spec, with the older approximations as fallback
-            const presetFillRule = ["frame", "donut", "noSmoking"].includes(prstGeom) ? "evenodd" : ""
-            const presetPaths = getPresetShapePaths(prstGeom, pos.width, pos.height, adjustments)
-            if (presetPaths) return wrapSvg(prstGeom, "0 0 1 1", presetPaths, presetFillRule)
-
-            const path = getPresetShapePath(prstGeom, pos.left, pos.top, pos.width, pos.height, adjustments)
+            const path = getPresetShapePath(prstGeom, pos.left, pos.top, pos.width, pos.height, adj)
             if (!path) return null
 
-            return wrapSvg(prstGeom, "0 0 1 1", [{ d: path }], presetFillRule)
+            return `<svg data-shape="${prstGeom}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1" preserveAspectRatio="none" style="position: absolute; width: 100%; height: 100%;">
+                    <path ${svgAttributes} d="${path}"></path>
+                </svg>`
         }
 
         let blipFill = getValue(shape.shape, "p:blipFill")
@@ -1294,7 +1335,7 @@ export class PowerPointPackage {
                 // })
             }
         } else if (shape.name === "p:cxnSp") {
-            const svg = pptShapeToNormalizedSvg()
+            const svg = pptShapeToNormalizedSvg(shape.shape)
             if (svg) {
                 delete item.lines
                 item.type = "icon"
@@ -1318,12 +1359,11 @@ export class PowerPointPackage {
 
         if (shape.isDecoration) item.decoration = true
 
-        // padding: default 91440 EMU (0.1 in) left/right, 45720 EMU (0.05 in) top/bottom for text shapes
+        // padding: default 72000 EMU (0.1 in) left/right, 36000 EMU (0.05 in) top/bottom for text shapes
+        // bodyPrs already declared above (line ~921) — reused here for padding
         const isText = (shape.name === "p:sp" || svgText) && !svgShape
         const getPad = (key: string, defEmu: number, scale = 1) => {
-            // text insets don't apply to shapes/media (the svg/image fills the item box)
-            if (!isText) return 0
-            const raw = bodyPrs.map((b) => b[key]).find((v) => v != null && v !== "")
+            const raw = bodyPrs.map((b) => getAttribute(b, key)).find((v) => v !== "")
             const emu = raw != null && !isNaN(Number(raw)) ? Number(raw) : isText ? (svgText && (key === "tIns" || key === "bIns") ? 0 : defEmu) : 0
             return round(emuToPixels(emu) * scale)
         }
@@ -1360,21 +1400,17 @@ export class PowerPointPackage {
         pos.height *= ctx.scale.y ?? 1
         if (pos.width === 0 && pos.height === 0) pos = { left: 80, top: 200, width: 1760, height: 680 } // set default pos
 
-        // some PPT shapes have width or height of 0, which will cause them to not be visible in CSS rendering, set minimum size
-        if (svgShape) {
-            const strokeWidth = (getShapeStroke()?.width || 0) * ctx.scale.factor
-            if (!pos.height) {
-                const size = Math.max(strokeWidth, 4)
-                pos.top -= size / 2
-                pos.height = size
+        // Ensure lines/connectors with 0-height or 0-width have a minimum bounding box
+        if (shape.name === "p:cxnSp" || svgShape) {
+            if (pos.height < 4) {
+                pos.top -= 2
+                pos.height = Math.max(pos.height || 0, 4)
             }
-            if (!pos.width) {
-                const size = Math.max(strokeWidth, 4)
-                pos.left -= size / 2
-                pos.width = size
+            if (pos.width < 4) {
+                pos.left -= 2
+                pos.width = Math.max(pos.width || 0, 4)
             }
         }
-
         item.style += Object.entries(pos)
             .map(([k, v]) => (v != null ? `${k}: ${round(v)}px;` : ""))
             .join("")
@@ -1412,90 +1448,6 @@ export class PowerPointPackage {
         }
 
         return item
-    }
-
-    private getTable(tbl: any[], ctx: { colors: { [key: string]: any }[]; scale: { x: number; y: number; factor: number } }): NonNullable<Item["table"]> {
-        const tblPrAttrs = getAttributes(tbl, "a:tblPr")
-        const styleId = String(getValue(tbl, "a:tblPr", "a:tableStyleId")[0]?.["#text"] || "")
-        const tableStyles = getValue(this.parts.get("ppt/tableStyles.xml"), "a:tblStyleLst")
-        const tableStyle = tableStyles.find((n: any) => n?.["a:tblStyle"] && n[":@"]?.styleId === styleId)?.["a:tblStyle"] || []
-
-        const rows = getValues(tbl, "a:tr")
-        const rowCount = rows.length
-
-        // table style parts that apply to a cell (later parts override earlier ones)
-        const getStyleParts = (r: number, c: number, colCount: number) => {
-            const parts = ["wholeTbl"]
-            const bodyRow = tblPrAttrs.firstRow === "1" ? r - 1 : r
-            if (tblPrAttrs.bandRow === "1" && bodyRow >= 0) parts.push(bodyRow % 2 === 0 ? "band1H" : "band2H")
-            if (tblPrAttrs.bandCol === "1") parts.push(c % 2 === 0 ? "band1V" : "band2V")
-            if (tblPrAttrs.firstCol === "1" && c === 0) parts.push("firstCol")
-            if (tblPrAttrs.lastCol === "1" && c === colCount - 1) parts.push("lastCol")
-            if (tblPrAttrs.lastRow === "1" && r === rowCount - 1) parts.push("lastRow")
-            if (tblPrAttrs.firstRow === "1" && r === 0) parts.push("firstRow")
-            return parts.map((key) => getValue(tableStyle, "a:" + key)).filter((a) => a.length)
-        }
-
-        const insideH = getValue(tableStyle, "a:wholeTbl", "a:tcStyle", "a:tcBdr", "a:insideH")
-        const borderColor = resolveColor(getValue(insideH, "a:ln", "a:solidFill"), ctx.colors) || "#000000"
-        const borderWidth = Math.max(1, round(emuToPixels(getAttribute(insideH, "w", "a:ln") || 12700) * ctx.scale.factor))
-
-        const tableRows = rows.map((row, r) => {
-            const cells = getValues(row, "a:tc")
-            return {
-                cells: cells.map((cell, c) => {
-                    const cellAttrs = row.filter((n: any) => n?.["a:tc"])[c]?.[":@"] || {}
-                    if (cellAttrs.hMerge === "1" || cellAttrs.vMerge === "1") return { text: "" }
-
-                    const styleParts = getStyleParts(r, c, cells.length)
-                    const paragraphs = getValues(cell, "a:txBody", "a:p")
-                    const text = paragraphs.map((p) => p.map((n: any) => (n["a:r"] || n["a:fld"] ? String(getValue(n["a:r"] || n["a:fld"], "a:t")[0]?.["#text"] ?? "") : n["a:br"] ? "\n" : "")).join("")).join("\n")
-
-                    const firstRPr = getValues(cell, "a:txBody", "a:p").flatMap((p) => p.filter((n: any) => n["a:r"]).map((n: any) => n["a:r"].find((a: any) => a?.["a:rPr"])))[0]
-                    const rPrAttrs = firstRPr?.[":@"] || {}
-                    const rPr = firstRPr?.["a:rPr"] || []
-
-                    // fill
-                    const tcPr = getValue(cell, "a:tcPr")
-                    let background = ""
-                    if (!hasChild(tcPr, "a:noFill")) {
-                        background = resolveColor(getValue(tcPr, "a:solidFill"), ctx.colors) || ""
-                        if (!background) {
-                            const styleFills = styleParts.map((part) => (getValue(part, "a:tcStyle", "a:fill", "a:solidFill").length ? getValue(part, "a:tcStyle", "a:fill", "a:solidFill") : getValue(part, "a:tcStyle", "a:fillRef"))).filter((f) => f.length)
-                            background = resolveColor(styleFills[styleFills.length - 1], ctx.colors) || ""
-                        }
-                    }
-
-                    // text color
-                    const styleColors = styleParts.map((part) => getValue(part, "a:tcTxStyle")).filter((t) => t.some((n: any) => colorTypes.some((type) => n?.hasOwnProperty(type))))
-                    const color = resolveColor(getValue(rPr, "a:solidFill"), ctx.colors) || resolveColor(styleColors[styleColors.length - 1], ctx.colors) || resolveColor(getValue(ctx.colors, "a:tx1"), ctx.colors) || "#000000"
-
-                    const isBold = rPrAttrs.b === "1" || styleParts.some((part) => getAttributes(part, "a:tcTxStyle").b === "on")
-                    const fontSize = round((Number(rPrAttrs.sz || 1800) / 100) * (96 / 72) * ctx.scale.factor)
-                    const algn = getAttribute(paragraphs[0] || [], "algn", "a:pPr")
-
-                    const typeface =
-                        getAttribute(rPr, "typeface", "a:latin") ||
-                        styleParts
-                            .map((part) => getAttribute(getValue(part, "a:tcTxStyle", "a:font"), "typeface", "a:latin"))
-                            .filter(Boolean)
-                            .pop() ||
-                        ""
-
-                    let style = `color: ${color};font-size: ${fontSize}px;`
-                    if (typeface && !typeface.startsWith("+")) style += `font-family: ${typeface}, Calibri;`
-                    if (background) style += `background-color: ${background};`
-                    if (isBold) style += "font-weight: bold;"
-                    if (algn === "l") style += "text-align: left;"
-                    else if (algn === "r") style += "text-align: right;"
-                    else if (algn === "ctr") style += "text-align: center;"
-
-                    return { text, style }
-                })
-            }
-        })
-
-        return { borderColor, borderWidth, rows: tableRows }
     }
 
     private getMediaPath(rid?: string, ctx?: { slide?: any; layout?: any; master?: any; part?: any } | OpcPart | null): string | null {
@@ -1802,45 +1754,16 @@ function buildRenderList(masterShapes: Shape[], layoutShapes: Shape[], slideShap
         }
     }
 
-    const slideRender: RenderShape[] = []
-    const layoutRender: RenderShape[] = []
-    const masterRender: RenderShape[] = []
+    const render: { name: string; shape: Shape; pos: Position; layoutShape: Shape; masterShape: Shape; txStyles: any[]; isDecoration?: boolean; part?: OpcPart }[] = []
 
     for (const s of tempSlideShapes) {
-        if (!s.hidden) {
-            const matchedLayout = findMatchingPlaceholder(s, tempLayoutShapes)
-            const matchedMaster = findMatchingPlaceholder(s, tempMasterShapes) || (matchedLayout ? findMatchingPlaceholder(matchedLayout, tempMasterShapes) : null)
-            const effectivePhType = s.phType || matchedLayout?.phType || matchedMaster?.phType || (s.phIdx === "0" ? "title" : s.phIdx === "1" ? "body" : "")
-
-            slideRender.push({
-                name: s.name,
-                shape: s.node,
-                attrs: s.attrs,
-                pos: s.pos,
-                layoutShape: matchedLayout ? matchedLayout.node : [],
-                masterShape: matchedMaster ? matchedMaster.node : [],
-                txStyles: getTxStyles(effectivePhType),
-                part: slide || undefined
-            })
-        }
+        if (!s.hidden) render.push({ name: s.name, shape: s.node, pos: s.pos, layoutShape: getMatchingShape(keyOf(s), tempLayoutShapes), masterShape: getMatchingShape(keyOf(s), tempMasterShapes), txStyles: getTxStyles(s.phType), part: slide || undefined })
     }
 
     for (const s of tempLayoutShapes) {
         if (s.hidden) continue
         if (!s.isPlaceholder || !slidePH.has(keyOf(s))) {
-            const matchedMaster = findMatchingPlaceholder(s, tempMasterShapes)
-            const effectivePhType = s.phType || matchedMaster?.phType || (s.phIdx === "0" ? "title" : s.phIdx === "1" ? "body" : "")
-            layoutRender.push({
-                name: s.name,
-                shape: s.node,
-                attrs: s.attrs,
-                pos: s.pos,
-                layoutShape: [],
-                masterShape: matchedMaster ? matchedMaster.node : [],
-                txStyles: getTxStyles(effectivePhType),
-                isDecoration: true,
-                part: layout || undefined
-            })
+            render.push({ name: s.name, shape: s.node, pos: s.pos, layoutShape: [], masterShape: getMatchingShape(keyOf(s), tempMasterShapes), txStyles: [], isDecoration: true, part: layout || undefined })
         }
     }
 
@@ -1849,7 +1772,7 @@ function buildRenderList(masterShapes: Shape[], layoutShapes: Shape[], slideShap
             if (s.hidden) continue
             const k = keyOf(s)
             if (!s.isPlaceholder || (!slidePH.has(k) && !layoutPH.has(k))) {
-                masterRender.push({ name: s.name, shape: s.node, attrs: s.attrs, pos: s.pos, layoutShape: [], masterShape: [], txStyles: [], isDecoration: true, part: master || undefined })
+                render.push({ name: s.name, shape: s.node, pos: s.pos, layoutShape: [], masterShape: [], txStyles: [], isDecoration: true, part: master || undefined })
             }
         }
     }

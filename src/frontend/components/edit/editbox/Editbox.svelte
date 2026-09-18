@@ -321,7 +321,13 @@
         overflow: visible !important;
     }
 
-    .item.chords {
+    .item.chords,
+    .item[style*="overflow: visible"],
+    .item[style*="overflow: visible"] :global(.align),
+    .item[style*="overflow: visible"] :global(.edit),
+    .item[style*="overflow:visible"],
+    .item[style*="overflow:visible"] :global(.align),
+    .item[style*="overflow:visible"] :global(.edit) {
         overflow: visible;
     }
 

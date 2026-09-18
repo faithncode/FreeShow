@@ -211,7 +211,9 @@
     }
 
     .slide.canOverflow :global(.item),
-    .slide.canOverflow :global(.item .align) {
+    .slide.canOverflow :global(.item .align),
+    .slide:not(.relative) :global(.item[style*="overflow: visible"] .align),
+    .slide:not(.relative) :global(.item[style*="overflow:visible"] .align) {
         overflow: visible;
     }
 

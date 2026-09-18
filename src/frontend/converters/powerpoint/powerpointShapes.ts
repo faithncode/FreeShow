@@ -1,7 +1,8 @@
 /* eslint-disable no-shadow */
 import { presetShapes } from "./powerpointPresetShapes"
 
-export type ShapePath = { d: string; noFill?: boolean; noStroke?: boolean; shade?: { color: string; opacity: number } }
+    const normalizeX = (x) => (width ? (x - x1) / width : 0.5)
+    const normalizeY = (y) => (height ? (y - y1) / height : 0.5)
 
 // DrawingML angles are in 60000ths of a degree
 const toRadians = (angle: number) => ((angle / 60000) * Math.PI) / 180
@@ -155,12 +156,370 @@ export function getPresetShapePath(prstGeom: string, x1: number, y1: number, wid
     const adj = adjustments.adj ?? adjustments.adj1 ?? 50000
 
     switch (prstGeom) {
+        case "diagStripe": {
+            // ✓
+            const a = adj / 100000
+            const points = [
+                { x: x1 + width * a, y: y1 },
+                { x: x1 + width, y: y1 },
+                { x: x1, y: y1 + height },
+                { x: x1, y: y1 + height * a }
+            ]
+            path = pointsToPath(points)
+            break
+        }
+        case "triangle":
+            path = pointsToPath([
+                { x: x1 + width / 2, y: y1 },
+                { x: x1, y: y1 + height },
+                { x: x1 + width, y: y1 + height }
+            ])
+            break
+        case "rtTriangle":
+            // should be right angle
+
+            // const a = width / (width + height) // make it a right angle triangle
+            // path = pointsToPath([
+            //     { x: x1, y: y1 + height },
+            //     { x: x1, y: y1 },
+            //     { x: x1 + width, y: y1 + height * a }
+            // ])
+
+            path = pointsToPath([
+                { x: x1, y: y1 + height },
+                { x: x1, y: y1 },
+                { x: x1 + width, y: y1 + height }
+            ])
+            break
+        case "round1Rect":
+            // path = pointsToPath([
+            //     { x: x1 + width * 0.1, y: y1 },
+            //     { x: x1 + width * 0.9, y: y1 },
+            //     { x: x1 + width, y: y1 + height * 0.1 },
+            //     { x: x1 + width, y: y1 + height * 0.9 },
+            //     { x: x1 + width * 0.9, y: y1 + height },
+            //     { x: x1 + width * 0.1, y: y1 + height },
+            //     { x: x1, y: y1 + height * 0.9 },
+            //     { x: x1, y: y1 + height * 0.1 }
+            // ])
+
+            const r = 0.2 // normalized radius (0..1)
+            const pathPoints = [
+                { x: r, y: 0 }, // start after top-left curve
+                { x: 1, y: 0 }, // top-right
+                { x: 1, y: 1 }, // bottom-right
+                { x: 0, y: 1 }, // bottom-left
+                { x: 0, y: r }, // left before curve
+                { x: 0, y: 0, q: true }, // top-left control point for quadratic curve
+                { x: r, y: 0 } // back to start
+            ]
+
+            // Convert to path with quadratic handling
+            path =
+                pathPoints
+                    .map((p, i) => {
+                        if (i === 0) return `M ${p.x} ${p.y}`
+                        if (p.q) {
+                            const prev = pathPoints[i - 1]
+                            return `Q ${prev.x} ${prev.y} ${p.x} ${p.y}`
+                        }
+                        return `L ${p.x} ${p.y}`
+                    })
+                    .join(" ") + " Z"
+            break
+        case "diamond":
+            path = pointsToPath([
+                { x: x1 + width / 2, y: y1 },
+                { x: x1 + width, y: y1 + height / 2 },
+                { x: x1 + width / 2, y: y1 + height },
+                { x: x1, y: y1 + height / 2 }
+            ])
+            break
+        case "pentagon":
+            path = pointsToPath([
+                { x: x1 + width / 2, y: y1 },
+                { x: x1 + width, y: y1 + 0.3771 * height },
+                { x: x1 + 0.808 * width, y: y1 + height },
+                { x: x1 + 0.192 * width, y: y1 + height },
+                { x: x1, y: y1 + 0.3771 * height }
+            ])
+            break
+        case "hexagon":
+            path = pointsToPath([
+                { x: x1 + 0.25 * width, y: y1 },
+                { x: x1 + 0.75 * width, y: y1 },
+                { x: x1 + width, y: y1 + height / 2 },
+                { x: x1 + 0.75 * width, y: y1 + height },
+                { x: x1 + 0.25 * width, y: y1 + height },
+                { x: x1, y: y1 + height / 2 }
+            ])
+            break
+        case "octagon":
+            path = pointsToPath([
+                { x: x1 + 0.29 * width, y: y1 },
+                { x: x1 + 0.71 * width, y: y1 },
+                { x: x1 + width, y: y1 + 0.29 * height },
+                { x: x1 + width, y: y1 + 0.71 * height },
+                { x: x1 + 0.71 * width, y: y1 + height },
+                { x: x1 + 0.29 * width, y: y1 + height },
+                { x: x1, y: y1 + 0.71 * height },
+                { x: x1, y: y1 + 0.29 * height }
+            ])
+            break
+        case "ellipse":
+            // path = `M ${normalizeX(x1 + width / 2)} ${normalizeY(y1)}
+            //         A ${normalizeX(width / 2)} ${normalizeY(height / 2)} 0 1 0 ${normalizeX(x1 + width / 2)} ${normalizeY(y1 + height)}
+            //         A ${normalizeX(width / 2)} ${normalizeY(height / 2)} 0 1 0 ${normalizeX(x1 + width / 2)} ${normalizeY(y1)} Z`
+            // break
+
+            const steps = 64 // increase for smoother ellipse
+            const pts: any[] = []
+            for (let i = 0; i < steps; i++) {
+                const theta = (i / steps) * Math.PI * 2
+                const px = x1 + (0.5 + 0.5 * Math.cos(theta)) * width
+                const py = y1 + (0.5 + 0.5 * Math.sin(theta)) * height
+                pts.push({ x: px, y: py })
+            }
+            path = pointsToPath(pts) // pointsToPath will call normalizeX/normalizeY
+            break
+        case "flowChartProcess":
+            path = pointsToPath([
+                { x: x1, y: y1 },
+                { x: x1 + width, y: y1 },
+                { x: x1 + width, y: y1 + height },
+                { x: x1, y: y1 + height }
+            ])
+            break
+        case "roundRect": {
+            const minDim = Math.min(width, height)
+            const r = Math.min(minDim / 2, Math.max(0, ((adj || 16667) / 100000) * minDim))
+            path = `M ${normalizeX(x1 + r)} ${normalizeY(y1)} 
+                    L ${normalizeX(x1 + width - r)} ${normalizeY(y1)}
+                    Q ${normalizeX(x1 + width)} ${normalizeY(y1)} ${normalizeX(x1 + width)} ${normalizeY(y1 + r)}
+                    L ${normalizeX(x1 + width)} ${normalizeY(y1 + height - r)}
+                    Q ${normalizeX(x1 + width)} ${normalizeY(y1 + height)} ${normalizeX(x1 + width - r)} ${normalizeY(y1 + height)}
+                    L ${normalizeX(x1 + r)} ${normalizeY(y1 + height)}
+                    Q ${normalizeX(x1)} ${normalizeY(y1 + height)} ${normalizeX(x1)} ${normalizeY(y1 + height - r)}
+                    L ${normalizeX(x1)} ${normalizeY(y1 + r)}
+                    Q ${normalizeX(x1)} ${normalizeY(y1)} ${normalizeX(x1 + r)} ${normalizeY(y1)}
+                    Z`
+            break
+        }
+        case "round2SameRect": {
+            const minDim = Math.min(width, height)
+            const r = Math.min(minDim / 2, Math.max(0, ((adj || 50000) / 100000) * minDim))
+            path = `M ${normalizeX(x1 + r)} ${normalizeY(y1)} 
+                    L ${normalizeX(x1 + width - r)} ${normalizeY(y1)}
+                    Q ${normalizeX(x1 + width)} ${normalizeY(y1)} ${normalizeX(x1 + width)} ${normalizeY(y1 + r)}
+                    L ${normalizeX(x1 + width)} ${normalizeY(y1 + height - r)}
+                    Q ${normalizeX(x1 + width)} ${normalizeY(y1 + height)} ${normalizeX(x1 + width - r)} ${normalizeY(y1 + height)}
+                    L ${normalizeX(x1 + r)} ${normalizeY(y1 + height)}
+                    Q ${normalizeX(x1)} ${normalizeY(y1 + height)} ${normalizeX(x1)} ${normalizeY(y1 + height - r)}
+                    L ${normalizeX(x1)} ${normalizeY(y1 + r)}
+                    Q ${normalizeX(x1)} ${normalizeY(y1)} ${normalizeX(x1 + r)} ${normalizeY(y1)}
+                    Z`
+            break
+        }
+        case "parallelogram": {
+            const a = (adj / 100000) * Math.min(width, height)
+            path = pointsToPath([
+                { x: x1 + a, y: y1 },
+                { x: x1 + width, y: y1 },
+                { x: x1 + width - a, y: y1 + height },
+                { x: x1, y: y1 + height }
+            ])
+            break
+        }
+        case "trapezoid": {
+            const a = (adj / 100000) * Math.min(width, height)
+            path = pointsToPath([
+                { x: x1 + a, y: y1 },
+                { x: x1 + width - a, y: y1 },
+                { x: x1 + width, y: y1 + height },
+                { x: x1, y: y1 + height }
+            ])
+            break
+        }
+        case "bevel": {
+            // Simple 3D beveled rectangle
+            const b = (adj / 100000) * Math.min(width, height)
+            path = `M ${normalizeX(x1 + b)} ${normalizeY(y1)}
+                L ${normalizeX(x1 + width - b)} ${normalizeY(y1)}
+                L ${normalizeX(x1 + width)} ${normalizeY(y1 + b)}
+                L ${normalizeX(x1 + width)} ${normalizeY(y1 + height - b)}
+                L ${normalizeX(x1 + width - b)} ${normalizeY(y1 + height)}
+                L ${normalizeX(x1 + b)} ${normalizeY(y1 + height)}
+                L ${normalizeX(x1)} ${normalizeY(y1 + height - b)}
+                L ${normalizeX(x1)} ${normalizeY(y1 + b)}
+                Z`
+            break
+        }
+        case "can": {
+            // Cylinder shape
+            const r = width / 2
+            const h = height
+            path = `M ${normalizeX(x1)} ${normalizeY(y1 + h)}
+                L ${normalizeX(x1)} ${normalizeY(y1 + h / 4)}
+                A ${normalizeX(r)} ${normalizeY(h / 8)} 0 0 1 ${normalizeX(x1 + width)} ${normalizeY(y1 + h / 4)}
+                L ${normalizeX(x1 + width)} ${normalizeY(y1 + h)}
+                Z`
+            break
+        }
+        case "bracePair": {
+            // Brace with approximate cubic curves
+            path = `M ${normalizeX(x1)} ${normalizeY(y1)}
+                C ${normalizeX(x1 + 0.1 * width)} ${normalizeY(y1 + 0.25 * height)} 
+                  ${normalizeX(x1 + 0.1 * width)} ${normalizeY(y1 + 0.75 * height)} 
+                  ${normalizeX(x1)} ${normalizeY(y1 + height)}
+                M ${normalizeX(x1 + width)} ${normalizeY(y1)}
+                C ${normalizeX(x1 + 0.9 * width)} ${normalizeY(y1 + 0.25 * height)} 
+                  ${normalizeX(x1 + 0.9 * width)} ${normalizeY(y1 + 0.75 * height)} 
+                  ${normalizeX(x1 + width)} ${normalizeY(y1 + height)}`
+            break
+        }
+        case "frame": {
+            // Picture frame or rectangle with thick border
+            const border = (adj / 100000) * Math.min(width, height)
+            path = pointsToPath([
+                { x: x1 + border, y: y1 + border },
+                { x: x1 + width - border, y: y1 + border },
+                { x: x1 + width - border, y: y1 + height - border },
+                { x: x1 + border, y: y1 + height - border }
+            ])
+            break
+        }
+        case "pie": {
+            // Pie slice
+            const startAngle = 0 // could be based on adjustment
+            const endAngle = Math.PI * 2 * (adj / 100000)
+            const cx = x1 + width / 2
+            const cy = y1 + height / 2
+            const rx = width / 2
+            const ry = height / 2
+            const xStart = cx + rx * Math.cos(startAngle)
+            const yStart = cy + ry * Math.sin(startAngle)
+            const xEnd = cx + rx * Math.cos(endAngle)
+            const yEnd = cy + ry * Math.sin(endAngle)
+            const largeArc = endAngle - startAngle > Math.PI ? 1 : 0
+
+            path = `M ${normalizeX(cx)} ${normalizeY(cy)}
+                L ${normalizeX(xStart)} ${normalizeY(yStart)}
+                A ${normalizeX(rx)} ${normalizeY(ry)} 0 ${largeArc} 1 ${normalizeX(xEnd)} ${normalizeY(yEnd)}
+                Z`
+            break
+        }
+        case "arc": {
+            // Arc shape
+            const startAngle = 0
+            const endAngle = Math.PI * 2 * (adj / 100000)
+            const cx = x1 + width / 2
+            const cy = y1 + height / 2
+            const rx = width / 2
+            const ry = height / 2
+            const xStart = cx + rx * Math.cos(startAngle)
+            const yStart = cy + ry * Math.sin(startAngle)
+            const xEnd = cx + rx * Math.cos(endAngle)
+            const yEnd = cy + ry * Math.sin(endAngle)
+            const largeArc = endAngle - startAngle > Math.PI ? 1 : 0
+
+            path = `M ${normalizeX(xStart)} ${normalizeY(yStart)}
+                A ${normalizeX(rx)} ${normalizeY(ry)} 0 ${largeArc} 1 ${normalizeX(xEnd)} ${normalizeY(yEnd)}`
+            break
+        }
+        case "line":
+        case "straightConnector1": {
+            // Simple straight line
+            path = `M ${normalizeX(x1)} ${normalizeY(y1)}
+                L ${normalizeX(x1 + width)} ${normalizeY(y1 + height)}`
+            break
+        }
         case "connector":
         case "bentConnector2":
         case "bentConnector3":
         case "curvedConnector2":
-        case "curvedConnector3":
-            return `M ${normalizeX(x1)} ${normalizeY(y1)} L ${normalizeX(x1 + width)} ${normalizeY(y1)} L ${normalizeX(x1 + width)} ${normalizeY(y1 + height)}`
+        case "curvedConnector3": {
+            // Straight or elbow connector
+            path = `M ${normalizeX(x1)} ${normalizeY(y1)}
+                L ${normalizeX(x1 + width)} ${normalizeY(y1)}
+                L ${normalizeX(x1 + width)} ${normalizeY(y1 + height)}`
+            break
+        }
+        case "chord": {
+            // Chord is like a pie slice without the center point
+            const startAngle = 0
+            const endAngle = Math.PI * 2 * (adj / 100000)
+            const cx = x1 + width / 2
+            const cy = y1 + height / 2
+            const rx = width / 2
+            const ry = height / 2
+            const xStart = cx + rx * Math.cos(startAngle)
+            const yStart = cy + ry * Math.sin(startAngle)
+            const xEnd = cx + rx * Math.cos(endAngle)
+            const yEnd = cy + ry * Math.sin(endAngle)
+            const largeArc = endAngle - startAngle > Math.PI ? 1 : 0
+
+            path = `M ${normalizeX(xStart)} ${normalizeY(yStart)}
+                A ${normalizeX(rx)} ${normalizeY(ry)} 0 ${largeArc} 1 ${normalizeX(xEnd)} ${normalizeY(yEnd)}
+                L ${normalizeX(xStart)} ${normalizeY(yStart)} Z`
+            break
+        }
+        case "donut": {
+            // Donut = outer ellipse minus inner ellipse
+            const outerR = { rx: width / 2, ry: height / 2 }
+            const innerR = { rx: width / 4, ry: height / 4 }
+            const cx = x1 + width / 2
+            const cy = y1 + height / 2
+
+            path = `M ${normalizeX(cx + outerR.rx)} ${normalizeY(cy)}
+                A ${normalizeX(outerR.rx)} ${normalizeY(outerR.ry)} 0 1 1 ${normalizeX(cx - outerR.rx)} ${normalizeY(cy)}
+                A ${normalizeX(outerR.rx)} ${normalizeY(outerR.ry)} 0 1 1 ${normalizeX(cx + outerR.rx)} ${normalizeY(cy)}
+                M ${normalizeX(cx + innerR.rx)} ${normalizeY(cy)}
+                A ${normalizeX(innerR.rx)} ${normalizeY(innerR.ry)} 0 1 0 ${normalizeX(cx - innerR.rx)} ${normalizeY(cy)}
+                A ${normalizeX(innerR.rx)} ${normalizeY(innerR.ry)} 0 1 0 ${normalizeX(cx + innerR.rx)} ${normalizeY(cy)}
+                Z`
+            break
+        }
+        case "blockArc": {
+            // Arc with thickness
+            const cx = x1 + width / 2
+            const cy = y1 + height / 2
+            const startAngle = 0
+            const endAngle = Math.PI * (adj / 100000)
+            const innerR = Math.min(width, height) / 4
+            const outerR = Math.min(width, height) / 2
+
+            const x1Outer = cx + outerR * Math.cos(startAngle)
+            const y1Outer = cy + outerR * Math.sin(startAngle)
+            const x2Outer = cx + outerR * Math.cos(endAngle)
+            const y2Outer = cy + outerR * Math.sin(endAngle)
+            const x2Inner = cx + innerR * Math.cos(endAngle)
+            const y2Inner = cy + innerR * Math.sin(endAngle)
+            const x1Inner = cx + innerR * Math.cos(startAngle)
+            const y1Inner = cy + innerR * Math.sin(startAngle)
+            const largeArc = endAngle - startAngle > Math.PI ? 1 : 0
+
+            path = `M ${normalizeX(x1Outer)} ${normalizeY(y1Outer)}
+                A ${normalizeX(outerR)} ${normalizeY(outerR)} 0 ${largeArc} 1 ${normalizeX(x2Outer)} ${normalizeY(y2Outer)}
+                L ${normalizeX(x2Inner)} ${normalizeY(y2Inner)}
+                A ${normalizeX(innerR)} ${normalizeY(innerR)} 0 ${largeArc} 0 ${normalizeX(x1Inner)} ${normalizeY(y1Inner)}
+                Z`
+            break
+        }
+        case "star": {
+            // 5-pointed star
+            const cx = x1 + width / 2
+            const cy = y1 + height / 2
+            const rOuter = width / 2
+            const rInner = rOuter * 0.5
+            const pts: any[] = []
+            for (let i = 0; i < 10; i++) {
+                const r = i % 2 === 0 ? rOuter : rInner
+                const angle = (Math.PI / 5) * i - Math.PI / 2
+                pts.push({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) })
+            }
+            path = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${normalizeX(p.x)} ${normalizeY(p.y)}`).join(" ") + " Z"
+            break
+        }
         case "banner": {
             const hOffset = (adj / 100000) * height
             return pointsToPath([
