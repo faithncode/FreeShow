@@ -3,14 +3,13 @@ import { uid } from "uid"
 import type { Project, ProjectShowRef } from "../../types/Projects"
 import type { Item, Layout, Line, Slide, SlideData, Timeline } from "../../types/Show"
 import { DEFAULT_ITEM_STYLE } from "../components/edit/scripts/itemHelpers"
-import { history } from "../components/helpers/historyActions"
+import { history } from "../components/helpers/history"
 import { getExtension, getFileName, getMediaType } from "../components/helpers/media"
 import { checkName, getGlobalGroup, initializeMetadata, newSlide } from "../components/helpers/show"
-import { openProjectItem } from "../components/show/project"
 import { newToast } from "../utils/common"
 import { translateText } from "../utils/language"
 import { ShowObj } from "./../classes/Show"
-import { activePopup, activeProject, alertMessage, groups, projects, projectView, shows } from "./../stores"
+import { activePopup, activeProject, activeShow, alertMessage, groups, projects, projectView, shows } from "./../stores"
 import { createCategory, setTempShows } from "./importHelpers"
 import { xml2json } from "./xml"
 
@@ -213,9 +212,10 @@ export function convertProPresenter(data: ImportFile[]) {
             projectView.set(false)
 
             if (projectShows.length) {
-                setTimeout(() => {
-                    openProjectItem(projectId, 0)
-                }, 100)
+                const firstShow = projectShows[0]
+                if (firstShow) {
+                    activeShow.set({ id: firstShow.id, type: "show", index: 0 })
+                }
             }
 
             newToast("main.finished")
