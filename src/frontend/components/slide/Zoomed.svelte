@@ -112,9 +112,22 @@
     $: canOverflow = false // $special.textCanOverflow !== false
 </script>
 
-<div id={outputId} class:center class:disabled class="zoomed" style="width: 100%;height: 100%;{outline ? `border: 2px solid ${outline};` : ''}{alignStyle}{center ? 'display: flex;justify-content: safe center;align-items: safe center;overflow: visible;' : ''}" use:observeResize={(r) => { elemWidth = r.width; elemHeight = r.height }}>
+<div
+    id={outputId}
+    class:center
+    class:disabled
+    class="zoomed"
+    style="width: 100%;height: 100%;{outline ? `border: 2px solid ${outline};` : ''}{alignStyle}{center ? 'display: flex;justify-content: safe center;align-items: safe center;overflow: visible;' : ''}"
+    use:observeResize={(r) => {
+        elemWidth = r.width
+        elemHeight = r.height
+    }}
+>
     <div
-        use:observeResize={(r) => { slideWidth = r.width; slideHeight = r.height }}
+        use:observeResize={(r) => {
+            slideWidth = r.width
+            slideHeight = r.height
+        }}
         class="slide"
         class:landscape={resolution.width / resolution.height > elemWidth / elemHeight}
         class:hideOverflow
@@ -158,7 +171,9 @@
     }
 
     .slide.canOverflow :global(.item),
-    .slide.canOverflow :global(.item .align) {
+    .slide.canOverflow :global(.item .align),
+    .slide:not(.relative) :global(.item[style*="overflow: visible"] .align),
+    .slide:not(.relative) :global(.item[style*="overflow:visible"] .align) {
         overflow: visible;
     }
 

@@ -55,18 +55,37 @@
         const isSelected = $activeEdit.items.includes(index)
 
         if (rightClick) {
-            if (!isSelected) activeEdit.update((ae) => { ae.items = [index]; return ae })
+            if (!isSelected)
+                activeEdit.update((ae) => {
+                    ae.items = [index]
+                    return ae
+                })
         } else if (e.shiftKey) {
-            if (!isSelected) activeEdit.update((ae) => { ae.items.push(index); return ae })
+            if (!isSelected)
+                activeEdit.update((ae) => {
+                    ae.items.push(index)
+                    return ae
+                })
         } else if (!isSelected) {
-            activeEdit.update((ae) => { ae.items = [index]; return ae })
+            activeEdit.update((ae) => {
+                ae.items = [index]
+                return ae
+            })
         } else if ($activeEdit.items.length > 1) {
-            const startX = e.clientX, startY = e.clientY
-            window.addEventListener("mouseup", (upEvent) => {
-                if (Math.hypot(upEvent.clientX - startX, upEvent.clientY - startY) < 4) {
-                    activeEdit.update((ae) => { ae.items = [index]; return ae })
-                }
-            }, { once: true })
+            const startX = e.clientX,
+                startY = e.clientY
+            window.addEventListener(
+                "mouseup",
+                (upEvent) => {
+                    if (Math.hypot(upEvent.clientX - startX, upEvent.clientY - startY) < 4) {
+                        activeEdit.update((ae) => {
+                            ae.items = [index]
+                            return ae
+                        })
+                    }
+                },
+                { once: true }
+            )
         }
 
         // deselect selected text
@@ -304,7 +323,13 @@
         overflow: visible !important;
     }
 
-    .item.chords {
+    .item.chords,
+    .item[style*="overflow: visible"],
+    .item[style*="overflow: visible"] :global(.align),
+    .item[style*="overflow: visible"] :global(.edit),
+    .item[style*="overflow:visible"],
+    .item[style*="overflow:visible"] :global(.align),
+    .item[style*="overflow:visible"] :global(.edit) {
         overflow: visible;
     }
 

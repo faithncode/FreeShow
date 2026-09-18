@@ -912,7 +912,15 @@
     }
 
     .item.chords,
-    .item.chords :global(.align) {
+    .item.chords :global(.align),
+    .item[style*="overflow: visible"],
+    .item[style*="overflow: visible"] :global(.align),
+    .item[style*="overflow: visible"] :global(.lines),
+    .item[style*="overflow: visible"] :global(.break),
+    .item[style*="overflow:visible"],
+    .item[style*="overflow:visible"] :global(.align),
+    .item[style*="overflow:visible"] :global(.lines),
+    .item[style*="overflow:visible"] :global(.break) {
         overflow: visible;
     }
 </style>

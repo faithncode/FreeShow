@@ -2,8 +2,8 @@
 export function getPresetShapePath(prstGeom, x1, y1, width, height, adj = 0) {
     let path = ""
 
-    const normalizeX = (x) => (x - x1) / width
-    const normalizeY = (y) => (y - y1) / height
+    const normalizeX = (x) => (width ? (x - x1) / width : 0.5)
+    const normalizeY = (y) => (height ? (y - y1) / height : 0.5)
 
     // Helper for simple polygons
     const pointsToPath = (points) => points.map((p, i) => `${i === 0 ? "M" : "L"} ${normalizeX(p.x)} ${normalizeY(p.y)}`).join(" ") + " Z"
@@ -155,7 +155,23 @@ export function getPresetShapePath(prstGeom, x1, y1, width, height, adj = 0) {
             ])
             break
         case "roundRect": {
-            const r = (adj / 100000) * width // simple approximation
+            const minDim = Math.min(width, height)
+            const r = Math.min(minDim / 2, Math.max(0, ((adj || 16667) / 100000) * minDim))
+            path = `M ${normalizeX(x1 + r)} ${normalizeY(y1)} 
+                    L ${normalizeX(x1 + width - r)} ${normalizeY(y1)}
+                    Q ${normalizeX(x1 + width)} ${normalizeY(y1)} ${normalizeX(x1 + width)} ${normalizeY(y1 + r)}
+                    L ${normalizeX(x1 + width)} ${normalizeY(y1 + height - r)}
+                    Q ${normalizeX(x1 + width)} ${normalizeY(y1 + height)} ${normalizeX(x1 + width - r)} ${normalizeY(y1 + height)}
+                    L ${normalizeX(x1 + r)} ${normalizeY(y1 + height)}
+                    Q ${normalizeX(x1)} ${normalizeY(y1 + height)} ${normalizeX(x1)} ${normalizeY(y1 + height - r)}
+                    L ${normalizeX(x1)} ${normalizeY(y1 + r)}
+                    Q ${normalizeX(x1)} ${normalizeY(y1)} ${normalizeX(x1 + r)} ${normalizeY(y1)}
+                    Z`
+            break
+        }
+        case "round2SameRect": {
+            const minDim = Math.min(width, height)
+            const r = Math.min(minDim / 2, Math.max(0, ((adj || 50000) / 100000) * minDim))
             path = `M ${normalizeX(x1 + r)} ${normalizeY(y1)} 
                     L ${normalizeX(x1 + width - r)} ${normalizeY(y1)}
                     Q ${normalizeX(x1 + width)} ${normalizeY(y1)} ${normalizeX(x1 + width)} ${normalizeY(y1 + r)}
@@ -274,13 +290,18 @@ export function getPresetShapePath(prstGeom, x1, y1, width, height, adj = 0) {
                 A ${normalizeX(rx)} ${normalizeY(ry)} 0 ${largeArc} 1 ${normalizeX(xEnd)} ${normalizeY(yEnd)}`
             break
         }
-        case "line": {
+        case "line":
+        case "straightConnector1": {
             // Simple straight line
             path = `M ${normalizeX(x1)} ${normalizeY(y1)}
                 L ${normalizeX(x1 + width)} ${normalizeY(y1 + height)}`
             break
         }
-        case "connector": {
+        case "connector":
+        case "bentConnector2":
+        case "bentConnector3":
+        case "curvedConnector2":
+        case "curvedConnector3": {
             // Straight or elbow connector
             path = `M ${normalizeX(x1)} ${normalizeY(y1)}
                 L ${normalizeX(x1 + width)} ${normalizeY(y1)}
