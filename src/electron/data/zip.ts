@@ -3,6 +3,7 @@ import path from "path"
 import type { Readable } from "stream"
 import yauzl from "yauzl"
 import yazl from "yazl"
+import zlib from "zlib"
 import { ToMain } from "../../types/IPC/ToMain"
 import { sendToMain } from "../IPC/main"
 import { createFolder, getExtension } from "../utils/files"
@@ -90,16 +91,113 @@ function getZipErrorAlert(file: string, error: unknown) {
 }
 
 export async function decompressZip(files: string[], asBuffer = false, options?: DecompressStreamOptions) {
-    const data: { content: Buffer | string; name: string; extension: string }[] = []
+    const data: { content: Buffer | string; name: string; extension: string; zipName?: string }[] = []
 
     for (const file of files) {
+        const zipName = path.basename(file).replace(/\.[^/.]+$/, "")
         try {
             const fileData = await decompressZipStream(file, asBuffer, options)
-            data.push(...fileData)
+            data.push(...fileData.map((d) => ({ ...d, zipName })))
         } catch (err) {
+            // Manual fallback if yauzl fails on malformed / zip64
+            try {
+                const fallbackData = decompressZipManual(file, asBuffer)
+                if (fallbackData.length) {
+                    data.push(...fallbackData.map((d) => ({ ...d, zipName })))
+                    continue
+                }
+            } catch (manualErr) {
+                console.error("Manual zip fallback also failed:", manualErr)
+            }
             sendToMain(ToMain.ALERT, getZipErrorAlert(file, err))
             console.error("Could not decompress zip file:", file, err)
         }
+    }
+
+    return data
+}
+
+export function decompressZipManual(filePath: string, asBuffer = false): { content: Buffer | string; name: string; extension: string }[] {
+    const data: { content: Buffer | string; name: string; extension: string }[] = []
+    let buffer: Buffer
+    try {
+        buffer = fs.readFileSync(filePath)
+    } catch (e) {
+        console.error("Failed to read file for manual zip extraction:", e)
+        return []
+    }
+
+    let offset = 0
+    while (offset < buffer.length - 4) {
+        // Find next Local File Header signature 0x04034b50 (PK\x03\x04)
+        const sig = buffer.readUInt32LE(offset)
+        if (sig !== 0x04034b50) {
+            // If we hit Central Directory file header (0x02014b50), local files are done
+            if (sig === 0x02014b50) break
+            offset++
+            continue
+        }
+
+        if (offset + 30 > buffer.length) break
+
+        const compression = buffer.readUInt16LE(offset + 8)
+        let compSize = buffer.readUInt32LE(offset + 18)
+        let uncompSize = buffer.readUInt32LE(offset + 22)
+        const nameLen = buffer.readUInt16LE(offset + 26)
+        const extraLen = buffer.readUInt16LE(offset + 28)
+
+        if (offset + 30 + nameLen > buffer.length) break
+
+        const nameBytes = buffer.subarray(offset + 30, offset + 30 + nameLen)
+        const name = nameBytes.toString("utf8")
+        const safeName = sanitizeZipPath(name)
+        const extension = getExtension(name)
+
+        // Parse zip64 extra field if sizes are 0xFFFFFFFF
+        if ((compSize === 0xffffffff || uncompSize === 0xffffffff) && extraLen > 0) {
+            const extraStart = offset + 30 + nameLen
+            const extraEnd = Math.min(extraStart + extraLen, buffer.length)
+            let ePos = extraStart
+            while (ePos < extraEnd - 4) {
+                const tag = buffer.readUInt16LE(ePos)
+                const size = buffer.readUInt16LE(ePos + 2)
+                if (tag === 0x0001 && size >= 16 && ePos + 4 + 16 <= extraEnd) {
+                    uncompSize = Number(buffer.readBigUInt64LE(ePos + 4))
+                    compSize = Number(buffer.readBigUInt64LE(ePos + 12))
+                    break
+                }
+                ePos += 4 + size
+            }
+        }
+
+        const dataStart = offset + 30 + nameLen + extraLen
+        if (dataStart + compSize > buffer.length) {
+            break
+        }
+
+        const fileData = buffer.subarray(dataStart, dataStart + compSize)
+
+        // Skip directories
+        if (!/\/$/.test(name) && safeName) {
+            try {
+                let contentBuffer: Buffer | null = null
+                if (compression === 0) {
+                    contentBuffer = fileData
+                } else if (compression === 8) {
+                    contentBuffer = zlib.inflateRawSync(fileData)
+                }
+
+                if (contentBuffer) {
+                    const stringType = extension !== "pro" && (!asBuffer || extension === "json")
+                    const content: Buffer | string = stringType ? contentBuffer.toString("utf8") : contentBuffer
+                    data.push({ content, name: safeName, extension })
+                }
+            } catch (err) {
+                console.warn(`Manual zip: skipping failed decompression for entry ${name}:`, err)
+            }
+        }
+
+        offset = dataStart + compSize
     }
 
     return data

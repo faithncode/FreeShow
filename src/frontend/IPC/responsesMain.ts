@@ -586,7 +586,7 @@ export const mainResponses: MainResponses = {
             powerpoint: () => convertPowerpoint(data),
             word: () => convertTexts(data),
             // Other programs
-            propresenter: () => convertProPresenter(data as { content: any; name: string; extension: string }[]),
+            propresenter: () => convertProPresenter(data as { content: any; name: string; extension: string; zipName?: string }[]),
             easyworship: () => convertEasyWorship(data),
             videopsalm: () => convertVideopsalm(data),
             openlp: () => convertOpenLP(data),

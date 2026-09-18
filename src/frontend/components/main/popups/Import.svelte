@@ -33,7 +33,7 @@
         { name: "CSV", extensions: ["csv"], id: "csv" },
         { name: "ChordPro", extensions: ["cho", "crd", "chopro", "chordpro", "chord", "pro", "txt", "onsong"], id: "chordpro" },
         { name: "Word", extensions: ["doc", "docx"], id: "word" },
-        { name: "ProPresenter", extensions: ["pro4", "pro5", "pro6", "pro", "json", "proBundle"], id: "propresenter" },
+        { name: "ProPresenter", extensions: ["pro4", "pro5", "pro6", "pro6pl", "pro6plx", "pro", "json", "proBundle"], id: "propresenter" },
         {
             name: "EasyWorship",
             extensions: ["db"],
