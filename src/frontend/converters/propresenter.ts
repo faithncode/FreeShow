@@ -32,12 +32,26 @@ interface ParsedPlaylist {
 }
 
 export function cleanSongName(name: string): string {
-    return name
+    if (!name) return ""
+    let cleaned = name
+    try {
+        if (cleaned.includes("%")) cleaned = decodeURIComponent(cleaned)
+    } catch {
+        // ignore malformed URI
+    }
+    cleaned = cleaned
+        .replace(/&amp;/g, "&")
+        .replace(/&apos;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
         .replace(/\\/g, "/")
         .replace(/^.*[\\\/]/, "") // strip directories
-        .replace(/\.(pro6|pro6pl|pro|json)$/i, "") // strip extension
+        .replace(/\.(pro6|pro6pl|pro|json|pro4|pro5|probundle)$/i, "") // strip known extensions
         .trim()
+    return cleaned
 }
+
 
 export function parsePro6Playlist(content: string, fallbackTitle: string): ParsedPlaylist {
     let title = fallbackTitle
