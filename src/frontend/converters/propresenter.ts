@@ -674,9 +674,23 @@ function collectItemTexts(textElement: any): string[] {
 
     itemStrings = itemStrings.filter(Boolean)
 
-    // Prefer RTF (which preserves line breaks); fall back to PlainText.
-    const rtf = itemStrings.find((a: any) => a["@rvXMLIvarName"] === "RTFData")
+    // Prefer clean PlainText if available with UTF-8 content
     const plain = itemStrings.find((a: any) => a["@rvXMLIvarName"] === "PlainText")
+    const rtf = itemStrings.find((a: any) => a["@rvXMLIvarName"] === "RTFData")
+
+    if (plain) {
+        const rawContent = plain["#text"] || (typeof plain === "string" ? plain : null)
+        if (typeof rawContent === "string" && rawContent.trim()) {
+            try {
+                let decoded = decodeBase64ToUtf8(rawContent)
+                if (decoded === PLACEHOLDER_TEXT) decoded = ""
+                if (decoded.trim()) return [decoded]
+            } catch {
+                // fall through to RTF
+            }
+        }
+    }
+
     if (rtf) itemStrings = [rtf]
     else if (plain) itemStrings = [plain]
 
@@ -695,6 +709,17 @@ function collectItemTexts(textElement: any): string[] {
     })
 
     return texts
+}
+
+function decodeBase64ToUtf8(text: string): string {
+    if (typeof text !== "string") return ""
+    const cleanB64 = text.replace(/[^A-Za-z0-9+/=]/g, "")
+    const binary = atob(cleanB64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i)
+    }
+    return new TextDecoder("utf-8").decode(bytes)
 }
 
 function makeParentSlide(slide: Slide, { label, color = "" }: { label: string; color?: string }): Slide {
@@ -728,11 +753,15 @@ function arrangeLayouts(arrangements: any[], sequences: Record<string, string>):
 function splitTextToLines(text: string): Line[] {
     if (typeof text !== "string") return []
     return text
-        .replaceAll("\n\n", "<br>")
-        .split("<br>")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .split("\n")
+        .map((lineText) => lineText.trim())
+        .filter((lineText) => lineText.length > 0)
         .map((lineText) => ({
             align: "",
-            text: [{ style: "", value: lineText.trim() }]
+            text: [{ style: "", value: lineText }]
         }))
 }
 

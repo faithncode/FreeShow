@@ -88,7 +88,7 @@
         : groupRefs.length
             ? getGroupSlideItems(groupRefs, slideId, targetIndex, langFilter)
             : style
-                ? clone(slide?.items || [])
+                ? filterItemsLanguage(clone(slide?.items || []), langFilter)
                 : combineSlideItems(reversedItems, langFilter)
 
     // ── Language filter helpers ──────────────────────────────────────────────
@@ -98,20 +98,50 @@
     function getLineTextValue(line: Line): string {
         return (line.text || []).map((t) => t.value || "").join("")
     }
+    function normalizeLines(lines: Line[]): Line[] {
+        const result: Line[] = []
+        lines.forEach((line) => {
+            const val = getLineTextValue(line)
+            if (val.includes("\n") || val.includes("\r")) {
+                const parts = val.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
+                parts.forEach((part) => {
+                    const trimmed = part.trim()
+                    if (trimmed.length > 0) {
+                        result.push({
+                            ...line,
+                            text: [{ style: line.text?.[0]?.style || "", value: trimmed }]
+                        })
+                    }
+                })
+            } else if (val.trim().length > 0) {
+                result.push(line)
+            }
+        })
+        return result
+    }
     function filterLinesByMode(lines: Line[], mode: string): Line[] {
-        if (!mode || mode === "both" || lines.length < 2 || lines.length % 2 !== 0) return lines
-        let isBilingual = true
-        for (let i = 0; i < lines.length; i += 2) {
-            const first = getLineTextValue(lines[i]).trim()
-            const second = getLineTextValue(lines[i + 1]).trim()
-            if (!first || !second || !containsTamil(first) || containsTamil(second)) { isBilingual = false; break }
-        }
-        if (!isBilingual) return lines
-        const filtered: Line[] = []
-        for (let i = 0; i < lines.length; i += 2) {
-            filtered.push(mode === "tamil" ? lines[i] : lines[i + 1])
-        }
-        return filtered
+        if (!mode || mode === "both" || !lines?.length) return lines
+        const normalized = normalizeLines(lines)
+        const hasTamil = normalized.some((l) => containsTamil(getLineTextValue(l)))
+        const hasNonTamil = normalized.some((l) => !containsTamil(getLineTextValue(l)) && getLineTextValue(l).trim().length > 0)
+
+        // Only filter if the content is actually bilingual (has both Tamil and non-Tamil)
+        if (!hasTamil || !hasNonTamil) return normalized
+
+        return normalized.filter((line) => {
+            const val = getLineTextValue(line).trim()
+            if (!val) return false
+            const isTam = containsTamil(val)
+            return mode === "tamil" ? isTam : !isTam
+        })
+    }
+
+    function filterItemsLanguage(itemsList: Item[], mode: string): Item[] {
+        if (!mode || mode === "both" || !itemsList?.length) return itemsList
+        return itemsList.map((item) => ({
+            ...item,
+            lines: filterLinesByMode(clone(item.lines || []), mode)
+        }))
     }
 
     // ── Group key helpers (stanza = parent group, e.g. "Verse 1") ────────────
@@ -127,6 +157,8 @@
         let oneItem: Item | null = null
         const highlight = stageItem?.highlightCurrentLine !== false
 
+        const allGroupLines: (Line & { _isActive?: boolean })[] = []
+
         refs.forEach((gRef) => {
             const gSlide = $showsCache[currentSlide?.id]?.slides?.[gRef.id]
             if (!gSlide) return
@@ -140,27 +172,34 @@
                 const text = getItemText(item)
                 if (!itemNumber && !text.length) return
 
-                let itemLines = clone(item.lines || [])
-                itemLines = filterLinesByMode(itemLines, filter)
-                if (highlight) {
-                    itemLines.forEach((line) => {
-                        line.customStyle = isActive ? "opacity: 1; color: #FFD700;" : "opacity: 0.55;"
-                        if (Array.isArray(line.text)) {
-                            line.text.forEach((t) => {
-                                t.style = (t.style || "") + (isActive ? ";opacity: 1; color: #FFD700 !important;" : ";opacity: 0.55;")
-                            })
-                        }
-                    })
-                }
-                if (!oneItem) {
-                    oneItem = { ...item, lines: itemLines }
-                } else {
-                    oneItem.lines!.push(...itemLines)
-                }
+                if (!oneItem) oneItem = clone(item)
+
+                const normalized = normalizeLines(clone(item.lines || []))
+                normalized.forEach((l) => {
+                    allGroupLines.push({ ...l, _isActive: isActive })
+                })
             })
         })
 
-        return oneItem ? [oneItem] : []
+        if (!oneItem) return []
+
+        const filteredLines = filterLinesByMode(allGroupLines, filter)
+
+        if (highlight) {
+            filteredLines.forEach((line: any) => {
+                const isActive = line._isActive
+                line.customStyle = isActive ? "opacity: 1; color: #FFD700;" : "opacity: 1;"
+                if (Array.isArray(line.text)) {
+                    line.text.forEach((t: any) => {
+                        t.style = (t.style || "") + (isActive ? ";opacity: 1; color: #FFD700 !important;" : ";opacity: 1;")
+                    })
+                }
+                delete line._isActive
+            })
+        }
+
+        oneItem.lines = filteredLines
+        return [oneItem]
     }
 
     // ── Mode 3: default — current slide content ───────────────────────────────
