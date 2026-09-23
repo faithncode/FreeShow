@@ -1626,7 +1626,7 @@ function tokenizeHtml(value: string) {
 
 function updateTagStack(tag: string, stack: { name: string; tag: string }[]) {
     const isClosing = /^<\//.test(tag)
-    const isSelfClosing = /\/>$/.test(tag)
+    const isSelfClosing = /\/>$/.test(tag) || /^<br\s*\/?>/i.test(tag) || /^<hr\s*\/?>/i.test(tag)
     if (!isClosing && !isSelfClosing) {
         const name = getTagName(tag)
         if (name) stack.push({ name, tag })
@@ -1759,12 +1759,12 @@ export function formatBibleText(text: string | undefined, redJesus = false) {
 export function sanitizeVerseText(input: unknown): string {
     if (input === null || input === undefined) return ""
 
-    const text = typeof input === "string" ? input : String(input)
-    const withoutBreaks = text.replace(/<\s*br\s*\/?>/gi, " ")
-    const normalizedSpaces = withoutBreaks.replace(/\u00a0/g, " ")
+    let text = typeof input === "string" ? input : String(input)
+    text = text.replace(/\r?\n/g, "<br>")
+    const normalizedSpaces = text.replace(/\u00a0/g, " ")
     const withQuotes = normalizedSpaces.replace(/<q>(.*?)<\/q>/g, "“$1”")
     const replacedUndertitles = withQuotes.replace(/<h4[^>]*>(.*?)<\/h4>\s*/g, '<span class="undertitle">$1 </span>')
-    const withoutMultipleSpaces = replacedUndertitles.replace(/ {2,}/g, " ")
+    const withoutMultipleSpaces = replacedUndertitles.replace(/[^\S\r\n]{2,}/g, " ")
 
     return withoutMultipleSpaces.trim()
 }

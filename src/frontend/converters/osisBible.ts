@@ -29,7 +29,7 @@ export async function convertOSISBible(data: any[]) {
 }
 
 async function XMLtoObject(xml: string) {
-    const bible = xml2json(xml, true)?.osis?.osisText || {}
+    const bible = xml2json(xml, false)?.osis?.osisText || {}
     let books: Book[] = []
 
     bible.div?.forEach((book, bookIndex) => {

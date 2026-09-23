@@ -356,7 +356,7 @@ export const groupNumbers: Writable<boolean> = writable(true) // true
 export const fullColors: Writable<boolean> = writable(false) // false
 export const formatNewShow: Writable<boolean> = writable(false) // false
 export const splitLines: Writable<number> = writable(0) // 0
-export const autoShortcuts: Writable<boolean> = writable(false) // false
+export const autoShortcuts: Writable<boolean> = writable(true) // false
 export const showsPath: Writable<null | string> = writable(null) // null // DEPRECATED
 export const customizedIcons: Writable<any> = writable({ disabled: [], svg: [] }) // {disabled: [], svg: []}
 

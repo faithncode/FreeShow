@@ -234,7 +234,7 @@
             <MaterialToggleSwitch label="create_show.auto_groups" checked={$special.autoGroups !== false} defaultValue={true} on:change={(e) => special.set({ ...$special, autoGroups: e.detail })} />
             <MaterialToggleSwitch label="create_show.format_new_show" checked={$formatNewShow} defaultValue={false} on:change={(e) => formatNewShow.set(e.detail)} />
             <MaterialNumberInput label="create_show.split_lines" value={$splitLines} max={100} on:change={(e) => splitLines.set(e.detail)} hideWhenZero />
-            <MaterialToggleSwitch label="create_show.auto_shortcuts" checked={$autoShortcuts} defaultValue={false} on:change={(e) => autoShortcuts.set(e.detail)} />
+            <MaterialToggleSwitch label="create_show.auto_shortcuts" checked={$autoShortcuts} defaultValue={true} on:change={(e) => autoShortcuts.set(e.detail)} />
         </List>
     {/if}
 
