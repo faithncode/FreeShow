@@ -4,7 +4,6 @@
     import { showsCache } from "../../../stores"
     import { getItemText } from "../../edit/scripts/textStyle"
     import { clone } from "../../helpers/array"
-    import { getLayoutRef } from "../../helpers/show"
     import { _show } from "../../helpers/shows"
     import Textbox from "../../slide/Textbox.svelte"
     import Zoomed from "../../slide/Zoomed.svelte"
@@ -71,10 +70,20 @@
     $: reversedItems = !itemNumber && stageItem?.invertItems ? clone(slide?.items || []) : clone(slide?.items || []).reverse()
     $: langFilter = stageItem?.lineFilter || "both"
 
-    // ── items ────────────────────────────────────────────────────────────────
+    // ── Single-group detection ───────────────────────────────────────────────
+    // When a show has only ONE unique group split across child slides,
+    // group-level navigation is meaningless. showGroupLines and showNextUnseen
+    // both fall back to per-slide mode so singers see slide-sized chunks.
+    function isSingleGroupShow(refList: LayoutRef[]): boolean {
+        if (!refList?.length) return false
+        const uniqueGroupIds = new Set(refList.map((r) => getGroupParentId(r)).filter(Boolean))
+        return uniqueGroupIds.size === 1
+    }
+
+    // ── items ────────────────────────────────────────────────────────────
     $: items = stageItem?.showNextUnseen
         ? getNextUnseenItems(showRef, seenGroupIds, targetIndex, langFilter)
-        : groupRefs.length
+        : groupRefs.length && !isSingleGroupShow(showRef)
             ? getGroupSlideItems(groupRefs, slideId, targetIndex, langFilter)
             : style
                 ? filterItemsLanguage(clone(slide?.items || []), langFilter)
@@ -187,7 +196,7 @@
             })
         }
 
-        oneItem.lines = filteredLines
+        ;(oneItem as Item).lines = filteredLines
         return [oneItem]
     }
 
@@ -251,6 +260,7 @@
     // ── Mode 1: next unseen stanza (separate box) ─────────────────────────────
     // "Stanza" = a whole GROUP (e.g. Verse 2), not a single slide within a group.
     // Collects lines from multiple slides within the next group (up to previewLines total).
+    // Single-group shows fall back to per-slide mode via isSingleGroupShow().
     function getNextUnseenItems(refList: LayoutRef[], seen: Set<string>, activeIndex: number | null, filter: string): Item[] {
         if (!refList.length) return []
         const previewLines = stageItem?.nextStanzaLines ?? 2
@@ -267,6 +277,11 @@
             if (gId && !groupMap.has(gId)) groupMap.set(gId, { layoutIndex: gLI })
         })
         const sortedGroups = [...groupMap.entries()].sort((a, b) => a[1].layoutIndex - b[1].layoutIndex)
+
+        // Single-group fallback: no meaningful "next group" → show next slide instead
+        if (isSingleGroupShow(refList)) {
+            return getNextSlideItems(refList, activeIndex, filter, previewLines)
+        }
 
         // Find next unseen group (forward, then cyclic)
         let nextGroupId: string | null = null
@@ -318,6 +333,49 @@
                 }
             })
         }
+
+        return oneItem ? [oneItem] : []
+    }
+
+    // ── Helper: show the immediate next (non-disabled) slide's content ─────────
+    // Used by the single-group fallback so each slide acts as its own preview unit.
+    function getNextSlideItems(refList: LayoutRef[], activeIndex: number | null, filter: string, previewLines: number): Item[] {
+        if (activeIndex === null) return []
+
+        // Walk forward from the current slide, skipping disabled slides
+        let nextIdx = activeIndex + 1
+        while (nextIdx < refList.length && refList[nextIdx]?.data?.disabled) nextIdx++
+        if (nextIdx >= refList.length) return [] // no next slide — end of show
+
+        const nextRef = refList[nextIdx]
+        if (!nextRef) return []
+
+        const nextSlide = $showsCache[currentSlide?.id]?.slides?.[nextRef.id]
+        if (!nextSlide) return []
+
+        const gItems = clone(nextSlide.items || [])
+            .filter((item: Item) => (item?.type || "text") === "text" && (!item?.bindings?.length || item.bindings.includes("stage")))
+
+        let oneItem: Item | null = null
+        let linesLeft = previewLines
+
+        gItems.forEach((item: Item, i: number) => {
+            if (linesLeft <= 0) return
+            if (itemNumber && itemNumber - 1 !== i) return
+            const text = getItemText(item)
+            if (!itemNumber && !text.length) return
+
+            const filtered = filterLinesByMode(clone(item.lines || []), filter)
+            const take = Math.min(linesLeft, filtered.length)
+            const takenLines = filtered.slice(0, take)
+            linesLeft -= take
+
+            if (!oneItem) {
+                oneItem = { ...item, lines: takenLines }
+            } else {
+                oneItem.lines!.push(...takenLines)
+            }
+        })
 
         return oneItem ? [oneItem] : []
     }
