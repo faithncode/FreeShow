@@ -69,7 +69,8 @@ export function convertPowerpoint(files: any[]) {
                 }
                 // ───────────────────────────────────────────────────────────────────
 
-                const layoutData = { transition: { type: "none", duration: 0, easing: "linear" } as const }
+                const noTransition = { type: "none", duration: 0, easing: "linear" } as const
+                const layoutData = { transition: noTransition, mediaTransition: noTransition }
 
                 if (!firstSlideId) {
                     firstSlideId = id

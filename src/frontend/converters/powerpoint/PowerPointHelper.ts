@@ -429,17 +429,21 @@ export class PowerPointPackage {
         this.extraItems = []
 
         // slide background color
+        // Only resolve from the slide's own bg element, NOT from layout/master.
+        // Layout/master bg fills are PPT internal defaults (e.g. bg1=white scheme colour) that
+        // are visually covered by pic shapes; inheriting them causes FreeShow's canvas
+        // backgroundColor to flash (e.g. white → black) when transitioning between layouts.
         // let fill = getValue(slide?.json, "p:sld", "p:cSld", "p:bg", "p:bgPr", "a:solidFill")
         // if (!fill.length) fill = getValue(layout?.json, "p:sldLayout", "p:cSld", "p:bg", "p:bgPr", "a:solidFill")
         // if (!fill.length) fill = getValue(master?.json, "p:sldMaster", "p:cSld", "p:bg", "p:bgPr", "a:solidFill")
         const sldSlide = getValue(slide?.json, "p:sld")
         const sldLayout = getValue(layout?.json, "p:sldLayout")
         const sldMaster = getValue(master?.json, "p:sldMaster")
-        let fill = getFirstAvailable([sldSlide, sldLayout, sldMaster], ["p:cSld", "p:bg", "p:bgPr", "a:solidFill"], ["p:cSld", "p:bg", "p:bgRef"])
+        let fill = getFirstAvailable([sldSlide], ["p:cSld", "p:bg", "p:bgPr", "a:solidFill"], ["p:cSld", "p:bg", "p:bgRef"])
         let bgColor = resolveColor(fill, colors)
 
-        // slide gradient
-        const gradFill = getFirstAvailable([sldSlide, sldLayout, sldMaster], ["p:cSld", "p:bg", "p:bgPr", "a:gradFill"])
+        // slide gradient — slide-level only, same reason
+        const gradFill = getFirstAvailable([sldSlide], ["p:cSld", "p:bg", "p:bgPr", "a:gradFill"])
         bgColor = resolveGradient(gradFill, colors) || bgColor
 
         // slide background image
