@@ -163,6 +163,17 @@ class SlideLayoutPart extends OpcPart {
     get shapes(): Shape[] {
         return getValue(this.json, "p:sldLayout", "p:cSld", "p:spTree")
     }
+
+    /** The user-visible layout name stored in the PPTX (p:sldLayout p:cSld @name). */
+    get layoutName(): string {
+        return getAttribute(getValue(this.json, "p:sldLayout"), "name", "p:cSld") || ""
+    }
+
+    /** Layout number from file path, e.g. "ppt/slideLayouts/slideLayout2.xml" -> 2 */
+    get layoutNumber(): number {
+        const match = this.path.match(/slideLayout(\d+)\.xml/i)
+        return match ? Number(match[1]) : 0
+    }
 }
 
 class SlideMasterPart extends OpcPart {
@@ -490,10 +501,17 @@ export class PowerPointPackage {
 
         const notes = this.getSlideNotes(slide)
 
+        // Expose the layout name so importers can detect specialised slide types
+        // (e.g. "verse", "scripture", "bible") by layout without re-parsing text.
+        const layoutName = layout?.layoutName || ""
+        const layoutNumber = layout?.layoutNumber || 0
+
         const combined = {
             items,
             bgColor,
-            notes
+            notes,
+            layoutName,
+            layoutNumber
             // presentation,
             // slide,
             // layout,
