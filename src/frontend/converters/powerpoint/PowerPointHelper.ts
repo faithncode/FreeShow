@@ -427,21 +427,23 @@ export class PowerPointPackage {
             })
         this.extraItems = []
 
-        // slide background (the first part that defines a background is used)
+        // slide background color
+        // Only resolve from the slide's own bg element, NOT from layout/master.
+        // Layout/master bg fills are PPT internal defaults (e.g. bg1=white scheme colour) that
+        // are visually covered by pic shapes; inheriting them causes FreeShow's canvas
+        // backgroundColor to flash (e.g. white → black) when transitioning between layouts.
+        // let fill = getValue(slide?.json, "p:sld", "p:cSld", "p:bg", "p:bgPr", "a:solidFill")
+        // if (!fill.length) fill = getValue(layout?.json, "p:sldLayout", "p:cSld", "p:bg", "p:bgPr", "a:solidFill")
+        // if (!fill.length) fill = getValue(master?.json, "p:sldMaster", "p:cSld", "p:bg", "p:bgPr", "a:solidFill")
         const sldSlide = getValue(slide?.json, "p:sld")
         const sldLayout = getValue(layout?.json, "p:sldLayout")
         const sldMaster = getValue(master?.json, "p:sldMaster")
-        const bgParts: [any[], SlidePart | SlideLayoutPart | SlideMasterPart | null][] = [
-            [sldSlide, slide],
-            [sldLayout, layout],
-            [sldMaster, master]
-        ]
-        const [bgSld, bgPart] = bgParts.find(([sld]) => getValue(sld, "p:cSld", "p:bg").length) || [[], null]
-        const bgPr = getValue(bgSld, "p:cSld", "p:bg", "p:bgPr")
-        const bgRef = getValue(bgSld, "p:cSld", "p:bg", "p:bgRef")
+        let fill = getFirstAvailable([sldSlide], ["p:cSld", "p:bg", "p:bgPr", "a:solidFill"], ["p:cSld", "p:bg", "p:bgRef"])
+        let bgColor = resolveColor(fill, colors)
 
-        // PowerPoint default background is white (also shown behind transparent background images)
-        let bgColor = resolveColor(getValue(bgPr, "a:solidFill"), colors) || resolveGradient(getValue(bgPr, "a:gradFill"), colors) || resolveColor(getValue(bgPr, "a:pattFill", "a:bgClr"), colors) || resolveColor(bgRef, colors) || "#FFFFFF"
+        // slide gradient — slide-level only, same reason
+        const gradFill = getFirstAvailable([sldSlide], ["p:cSld", "p:bg", "p:bgPr", "a:gradFill"])
+        bgColor = resolveGradient(gradFill, colors) || bgColor
 
         // slide background image
         let bgPart: SlidePart | SlideLayoutPart | SlideMasterPart | null = null
