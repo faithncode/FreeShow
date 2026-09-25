@@ -4,13 +4,14 @@
     import type { Popups } from "../../../../types/Main"
     import { importFromClipboard } from "../../../converters/importHelpers"
     import { sendMain } from "../../../IPC/main"
-    import { activePopup, alertMessage, popupData } from "../../../stores"
+    import { activePopup, alertMessage, popupData, special } from "../../../stores"
     import { translateText } from "../../../utils/language"
     import { presentationExtensions } from "../../../values/extensions"
     import Icon from "../../helpers/Icon.svelte"
     import HRule from "../../input/HRule.svelte"
     import InputRow from "../../input/InputRow.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
+    import MaterialToggleSwitch from "../../inputs/MaterialToggleSwitch.svelte"
     import Tip from "../Tip.svelte"
 
     let mode = $popupData.mode
@@ -111,6 +112,14 @@
     //     activePopup.set("import_scripture")
     // }
 
+    function updateSpecial(value: any, key: string) {
+        special.update((a) => {
+            if (!value) delete a[key]
+            else a[key] = value
+            return a
+        })
+    }
+
     let openedPage = ""
 </script>
 
@@ -128,6 +137,18 @@
                 </div>
             </MaterialButton>
         {/each}
+    </div>
+
+    <div style="margin-top: 15px;display: flex;flex-direction: column;gap: 6px;">
+        <MaterialToggleSwitch
+            label="settings.ppt_merge_no_text_slides"
+            checked={$special.pptMergeNoTextSlides ?? false}
+            defaultValue={false}
+            on:change={(e) => updateSpecial(e.detail, "pptMergeNoTextSlides")}
+        />
+        <span style="font-size: 0.85em;opacity: 0.7;margin-inline-start: 36px;white-space: normal;">
+            {translateText("settings.ppt_merge_no_text_slides_desc")}
+        </span>
     </div>
 
     <Tip value="The best option would generally be to get a hold of the presentation as PDF format in the first place." top={20} />

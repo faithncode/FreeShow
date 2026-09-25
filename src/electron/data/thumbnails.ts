@@ -234,39 +234,47 @@ async function captureWithCanvas(data: { input: string; output: string; size: Re
 }
 
 const failedPaths: string[] = []
-export function saveImage(data: { id?: string; path?: string; base64?: string; buffer?: ArrayBuffer; filePath?: string[]; format?: "png" | "jpg"; openFolder?: boolean }) {
-    const dataURL = data.base64
-    const buffer = data.buffer
-    let savePath = data.path || ""
+export function saveImage(data: { id?: string; path?: string; base64?: string; buffer?: ArrayBuffer; filePath?: string[]; format?: "png" | "jpg"; openFolder?: boolean }): Promise<string> {
+    return new Promise((resolve) => {
+        const dataURL = data.base64
+        const buffer = data.buffer
+        let savePath = data.path || ""
 
-    if (data.id && captureTimeouts.has(data.id)) {
-        clearTimeout(captureTimeouts.get(data.id))
-        captureTimeouts.delete(data.id)
-    }
+        if (data.id && captureTimeouts.has(data.id)) {
+            clearTimeout(captureTimeouts.get(data.id))
+            captureTimeouts.delete(data.id)
+        }
 
-    if (data.filePath?.length) {
-        const fileName = data.filePath.pop()!
-        const exportFolder = getDataFolderPath("exports")
-        const folderPath = path.join(exportFolder, ...data.filePath)
-        createFolder(folderPath)
-        savePath = path.join(folderPath, fileName)
+        if (data.filePath?.length) {
+            const fileName = data.filePath.pop()!
+            const exportFolder = getDataFolderPath("exports")
+            const folderPath = path.join(exportFolder, ...data.filePath)
+            createFolder(folderPath)
+            savePath = path.join(folderPath, fileName)
 
-        if (data.openFolder) openInSystem(folderPath, true)
-    } else {
-        mediaBeingCaptured = Math.max(0, mediaBeingCaptured - 1)
-        if (mediaBeingCaptured === 0) currentlyGenerating.clear()
-    }
+            if (data.openFolder) openInSystem(folderPath, true)
+        } else {
+            mediaBeingCaptured = Math.max(0, mediaBeingCaptured - 1)
+            if (mediaBeingCaptured === 0) currentlyGenerating.clear()
+        }
 
-    if ((!dataURL && !buffer) || !savePath) {
-        if (!data.id) return
-        failedPaths.push(data.id)
-        setTimeout(() => generationFinished(data.id!))
-        return
-    }
-    if (data.id && failedPaths.includes(data.id)) failedPaths.splice(failedPaths.indexOf(data.id), 1)
+        if ((!dataURL && !buffer) || !savePath) {
+            if (!data.id) {
+                resolve("")
+                return
+            }
+            failedPaths.push(data.id)
+            setTimeout(() => generationFinished(data.id!))
+            resolve("")
+            return
+        }
+        if (data.id && failedPaths.includes(data.id)) failedPaths.splice(failedPaths.indexOf(data.id), 1)
 
-    const image = buffer ? nativeImage.createFromBuffer(Buffer.from(buffer)) : nativeImage.createFromDataURL(dataURL!)
-    saveToDisk(savePath, image, data.format || "png", data.id)
+        const image = buffer ? nativeImage.createFromBuffer(Buffer.from(buffer)) : nativeImage.createFromDataURL(dataURL!)
+        saveToDisk(savePath, image, data.format || "png", data.id, (err) => {
+            resolve(err ? "" : savePath)
+        })
+    })
 }
 
 export async function pdfToImage({ filePath }: { filePath: string }) {
@@ -380,12 +388,13 @@ function parseSize(sizeStr: string): ResizeOptions {
 /// // SAVE /////
 
 const jpegQuality = 90 // 0-100
-function saveToDisk(savePath: string, image: NativeImage, format: "png" | "jpg", id?: string) {
+function saveToDisk(savePath: string, image: NativeImage, format: "png" | "jpg", id?: string, callback?: (err: Error | null) => void) {
     let img
     if (format === "jpg") img = image.toJPEG(jpegQuality)
     else img = image.toPNG() // higher file size, but supports transparent images
 
     fs.writeFile(savePath, img, (err) => {
+        if (callback) callback(err)
         if (!id) return
         if (err) failedPaths.push(id)
         generationFinished(id)

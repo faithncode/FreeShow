@@ -3,10 +3,11 @@ import { uid } from "uid"
 import type { Show, Slide, SlideData } from "../../../types/Show"
 import { ShowObj } from "../../classes/Show"
 import { checkName } from "../../components/helpers/show"
-import { activePopup, alertMessage, drawerTabsData } from "../../stores"
+import { activePopup, alertMessage, drawerTabsData, special } from "../../stores"
 import { translateText } from "../../utils/language"
 import { createCategory, setTempShows } from "../importHelpers"
 import { PowerPointPackage } from "./PowerPointHelper"
+import { compositeSlideImage } from "./powerpointCompositor"
 
 // missing shapes/tables/graphs
 // item/line background, some text color incorrect
@@ -21,31 +22,37 @@ export function convertPowerpoint(files: any[]) {
     if (categoryId === "all" || categoryId === "unlabeled") categoryId = createCategory("presentation", "presentation", { isDefault: true })
 
     const tempShows: any[] = []
+    const shouldMergeNoTextSlides = get(special).pptMergeNoTextSlides ?? false
 
-    setTimeout(() => {
-        files.forEach(({ name, content }: any) => {
+    setTimeout(async () => {
+        for (const { name, content } of files) {
             // console.log("PPT", content)
 
             let pkg: PowerPointPackage
             try {
                 pkg = new PowerPointPackage(content)
             } catch {
-                return
+                continue
             }
             const presentationPart = pkg.getPresentation()
-            if (!presentationPart) return
+            if (!presentationPart) continue
 
             // load font faces
             const contentPaths = content.contentPaths || {}
             // loadAllFonts(contentPaths)
             const fonts = getAllFontNames(contentPaths)
 
+            const contentFolder = content.contentFolder || (Object.values(contentPaths)[0] ? (Object.values(contentPaths)[0] as string).replace(/[/\\][^/\\]+$/, "") : "")
+
             const convertedSlides = pkg.getSlides()
             let slides: { [key: string]: Slide } = {}
             let layouts: SlideData[] = []
             let firstSlideId = ""
-            convertedSlides.forEach((slide) => {
-                if (!slide) return
+            const showMedia: Show["media"] = {}
+
+            for (let slideIdx = 0; slideIdx < convertedSlides.length; slideIdx++) {
+                const slide = convertedSlides[slideIdx]
+                if (!slide) continue
 
                 const id = uid()
 
@@ -70,19 +77,50 @@ export function convertPowerpoint(files: any[]) {
                 // ───────────────────────────────────────────────────────────────────
 
                 const noTransition = { type: "none", duration: 0, easing: "linear" } as const
-                const layoutData = { transition: noTransition, mediaTransition: noTransition }
+                const layoutData: SlideData = { id, transition: noTransition, mediaTransition: noTransition }
+
+                // ── No-text slide background & PNG merging ─────────────────────────
+                // When enabled, for slides with NO text content (and not scripture),
+                // composite master/layout background and picture shapes into a single
+                // background image. This eliminates transparent item transition flashes
+                // (dip to black/white) and keeps the composited image as background.
+                const textBlocks = extractTextBlocks(slide.items)
+                const isNoTextSlide = textBlocks.length === 0 && !scriptureValues
+
+                if (shouldMergeNoTextSlides && isNoTextSlide) {
+                    const hasMedia = slide.items.some((i: any) => (i.type === "media" && i.src) || (i.type === "icon" && i.customSvg)) || !!slide.bgImage
+                    if (hasMedia) {
+                        try {
+                            const mergedImagePath = await compositeSlideImage(slide, contentFolder, slideIdx)
+                            if (mergedImagePath) {
+                                const mediaId = uid()
+                                showMedia[mediaId] = {
+                                    name: `Slide ${slideIdx + 1}`,
+                                    path: mergedImagePath,
+                                    type: "image"
+                                }
+                                layoutData.background = mediaId
+                                slideData.settings = { ...slideData.settings, color: "" }
+                                slideData.items = []
+                            }
+                        } catch (err) {
+                            console.error("Failed to composite no-text slide:", err)
+                        }
+                    }
+                }
+                // ───────────────────────────────────────────────────────────────────
 
                 if (!firstSlideId) {
                     firstSlideId = id
                     slideData.children = []
-                    layouts.push({ id, ...layoutData, children: {} })
+                    layouts.push({ ...layoutData, children: {} })
                 } else {
                     slides[firstSlideId].children!.push(id)
                     layouts[0].children![id] = layoutData
                 }
 
                 slides[id] = slideData
-            })
+            }
 
             // create show
             const layoutID = uid()
@@ -90,6 +128,7 @@ export function convertPowerpoint(files: any[]) {
             show.name = checkName(name)
             show.origin = "powerpoint"
             show.settings.customFonts = fonts
+            show.media = showMedia
 
             const meta: any = content["docProps/core.xml"]?.["cp:coreProperties"]
             if (meta) {
@@ -108,7 +147,7 @@ export function convertPowerpoint(files: any[]) {
             show.layouts = { [layoutID]: { name: translateText("example.default"), notes: "", slides: layouts } }
 
             tempShows.push({ id: uid(), show })
-        })
+        }
 
         setTempShows(tempShows)
     }, 10)

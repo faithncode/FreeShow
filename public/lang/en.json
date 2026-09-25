@@ -1352,6 +1352,8 @@
         "calendar": "Calendar",
         "text_import": "Text",
         "media_import": "Media",
+        "ppt_merge_no_text_slides": "Merge background and PNGs on textless slides",
+        "ppt_merge_no_text_slides_desc": "Combines PNG overlays and master template backgrounds into a single background image on slides without text, preventing black/white flashes during transitions.",
         "other": "Other",
         "language": "Language",
         "autosave": "Autosave",

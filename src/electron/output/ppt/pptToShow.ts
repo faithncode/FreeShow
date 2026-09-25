@@ -70,6 +70,7 @@ export async function pptToShow(filePath: string) {
         }
 
         json.contentPaths = contentPaths
+        json.contentFolder = contentFolder
 
         return json
     } catch (err) {

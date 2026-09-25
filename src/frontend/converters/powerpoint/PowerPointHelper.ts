@@ -325,7 +325,7 @@ export class PowerPointPackage {
         if (!presentation) return []
         console.log("Presentation:", presentation)
 
-        const slides: ReturnType<typeof this.getSlide>[] = []
+        const slides: ReturnType<PowerPointPackage["getSlide"]>[] = []
 
         for (const target of presentation.slideOrder) {
             const slide = this.getSlide(presentation, target)
@@ -446,6 +446,12 @@ export class PowerPointPackage {
         const gradFill = getFirstAvailable([sldSlide], ["p:cSld", "p:bg", "p:bgPr", "a:gradFill"])
         bgColor = resolveGradient(gradFill, colors) || bgColor
 
+        // master/layout fallback bg fill (for no-text slides merging)
+        let masterFill = getFirstAvailable([sldLayout, sldMaster], ["p:cSld", "p:bg", "p:bgPr", "a:solidFill"], ["p:cSld", "p:bg", "p:bgRef"])
+        let masterBgColor = resolveColor(masterFill, colors)
+        const masterGradFill = getFirstAvailable([sldLayout, sldMaster], ["p:cSld", "p:bg", "p:bgPr", "a:gradFill"])
+        masterBgColor = resolveGradient(masterGradFill, colors) || masterBgColor
+
         // slide background image
         let bgPart: SlidePart | SlideLayoutPart | SlideMasterPart | null = null
         let bgFill: any[] = []
@@ -465,6 +471,7 @@ export class PowerPointPackage {
         const bgImage = this.getMediaPath(bgImgId, bgPart || { slide, layout, master })
         if (bgImage) {
             let imageItem: Item = { type: "media", style: "width:1920px;height:1080px;top:0;left:0;", src: bgImage, fit: "fill" }
+            ;(imageItem as any)._pos = { left: 0, top: 0, width: 1920, height: 1080 }
 
             const alpha = getAttribute(getValue(bgFill, "a:blip"), "amt", "a:alphaModFix")
             let a = parseInt(alpha || "100000") / 100000
@@ -513,6 +520,8 @@ export class PowerPointPackage {
         const combined = {
             items,
             bgColor,
+            masterBgColor,
+            bgImage: bgImage || null,
             notes,
             layoutName,
             layoutNumber
@@ -1021,20 +1030,6 @@ export class PowerPointPackage {
             if (strokeLinejoin) svgAttributes += ` stroke-linejoin="${strokeLinejoin}"`
             if (strokeMiterlimit) svgAttributes += ` stroke-miterlimit="${strokeMiterlimit}"`
 
-            // Compute aspect ratio
-            const aspect = pos.width / pos.height
-            let vbWidth = 1
-            let vbHeight = 1
-
-            if (aspect >= 1) {
-                // wider
-                vbWidth = 1
-                vbHeight = 1 / aspect
-            } else {
-                // taller
-                vbWidth = aspect
-                vbHeight = 1
-            }
 
             if (!prstGeom) {
                 // custom shape
@@ -1325,6 +1320,7 @@ export class PowerPointPackage {
         item.style += Object.entries(pos)
             .map(([k, v]) => (v != null ? `${k}: ${v}px;` : ""))
             .join("")
+        ;(item as any)._pos = { ...pos }
 
         // cropping
 
