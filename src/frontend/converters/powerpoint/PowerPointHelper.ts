@@ -445,6 +445,12 @@ export class PowerPointPackage {
         const gradFill = getFirstAvailable([sldSlide], ["p:cSld", "p:bg", "p:bgPr", "a:gradFill"])
         bgColor = resolveGradient(gradFill, colors) || bgColor
 
+        // master/layout fallback bg fill (for no-text slides merging)
+        let masterFill = getFirstAvailable([sldLayout, sldMaster], ["p:cSld", "p:bg", "p:bgPr", "a:solidFill"], ["p:cSld", "p:bg", "p:bgRef"])
+        let masterBgColor = resolveColor(masterFill, colors)
+        const masterGradFill = getFirstAvailable([sldLayout, sldMaster], ["p:cSld", "p:bg", "p:bgPr", "a:gradFill"])
+        masterBgColor = resolveGradient(masterGradFill, colors) || masterBgColor
+
         // slide background image
         let bgPart: SlidePart | SlideLayoutPart | SlideMasterPart | null = null
         let bgFill: any[] = []
@@ -463,14 +469,8 @@ export class PowerPointPackage {
         const bgImgId = getAttribute(bgFill, "r:embed", "a:blip") || getAttribute(bgFill, "r:link", "a:blip")
         const bgImage = this.getMediaPath(bgImgId, bgPart || { slide, layout, master })
         if (bgImage) {
-            // image can be stretched into a smaller rectangle
-            const fillRect = getAttributes(getValue(bgFill, "a:stretch"), "a:fillRect")
-            const inset = (key: string) => Number(fillRect[key] || 0) / 100000
-            const imgPos = { left: round(inset("l") * 1920), top: round(inset("t") * 1080), width: round((1 - inset("l") - inset("r")) * 1920), height: round((1 - inset("t") - inset("b")) * 1080) }
-            let imageItem: Item = { type: "media", style: `width:${imgPos.width}px;height:${imgPos.height}px;top:${imgPos.top}px;left:${imgPos.left}px;`, src: bgImage, fit: "fill" }
-
-            const filter = resolveImageEffects(bgFill, colors)
-            if (filter) imageItem.filter = filter
+            let imageItem: Item = { type: "media", style: "width:1920px;height:1080px;top:0;left:0;", src: bgImage, fit: "fill" }
+            ;(imageItem as any)._pos = { left: 0, top: 0, width: 1920, height: 1080 }
 
             const alpha = getAttribute(getValue(bgFill, "a:blip"), "amt", "a:alphaModFix")
             let a = parseInt(alpha || "100000") / 100000
@@ -516,6 +516,8 @@ export class PowerPointPackage {
         const combined = {
             items,
             bgColor,
+            masterBgColor,
+            bgImage: bgImage || null,
             notes,
             layoutName,
             layoutNumber
@@ -1139,86 +1141,6 @@ export class PowerPointPackage {
             if (strokeLinejoin) svgAttributes += ` stroke-linejoin="${strokeLinejoin}"`
             if (strokeMiterlimit) svgAttributes += ` stroke-miterlimit="${strokeMiterlimit}"`
 
-            // the svg is drawn in slide pixels, so the stroke scales with the slide like in PowerPoint
-            // (lines with zero width/height get a minimum item size later)
-            const minSize = Math.max(strokeWidth, 4)
-            const svgWidth = round(pos.width * ctx.scale.x) || minSize
-            const svgHeight = round(pos.height * ctx.scale.y) || minSize
-
-            const wrapSvg = (shapeName: string, shapeViewBox: string, shapePaths: ShapePath[], fillRule = "") => {
-                const ruleAttr = fillRule ? ` fill-rule="${fillRule}"` : ""
-
-                const [, , shapeW, shapeH] = shapeViewBox.split(" ").map(Number)
-                const paths = shapePaths.map((p) => ({ ...p, d: scalePath(p.d, svgWidth / (shapeW || 1), svgHeight / (shapeH || 1)) }))
-                const viewBox = `0 0 ${svgWidth} ${svgHeight}`
-                const svgStyle = "position: absolute; width: 100%; height: 100%; overflow: visible;"
-
-                if (!image) {
-                    const pathElems = paths.map((p) => {
-                        let attrs = svgAttributes
-                        if (p.noFill) attrs = attrs.replace(/^fill="[^"]*"/, 'fill="none"')
-                        if (p.noStroke) attrs = attrs.replace(/ stroke="[^"]*"/, "")
-                        // darker/lighter parts of the shape (e.g. the folds of a ribbon)
-                        const shade = p.shade && fill !== "none" && !p.noFill ? `<path fill="${p.shade.color}" fill-opacity="${p.shade.opacity}"${ruleAttr} d="${p.d}"></path>` : ""
-                        return `<path ${attrs}${ruleAttr} d="${p.d}"></path>${shade}`
-                    })
-                    return `<svg data-shape="${shapeName}" xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" preserveAspectRatio="none" style="${svgStyle}">${gradientDefs}${pathElems.join("")}</svg>`
-                }
-
-                // image clipped to the shape
-                function toFract(v: string): number {
-                    if (!v) return 0
-                    const n = Number(v)
-                    if (isNaN(n)) return 0
-                    // 100,000 units = 100%. Divide by 100,000 to get a 0.0-1.0 fraction.
-                    return n / 100000
-                }
-
-                const stretch = getValue(blipFill, "a:stretch")
-                const l = toFract(getAttribute(stretch, "l", "a:fillRect"))
-                const t = toFract(getAttribute(stretch, "t", "a:fillRect"))
-                const r = toFract(getAttribute(stretch, "r", "a:fillRect"))
-                const b = toFract(getAttribute(stretch, "b", "a:fillRect"))
-
-                // The image frame starts at (l, t)
-                let imgX = l * 100
-                let imgY = t * 100
-
-                // The width is the total (100%) minus the left and right offsets
-                let imgW = (1 - l - r) * 100
-                let imgH = (1 - t - b) * 100
-
-                // srcRect is inset
-                if (imgX === 0 && imgY === 0 && imgW === 100 && imgH === 100) {
-                    const srcL = toFract(getAttribute(blipFill, "l", "a:srcRect"))
-                    const srcT = toFract(getAttribute(blipFill, "t", "a:srcRect"))
-                    const srcR = toFract(getAttribute(blipFill, "r", "a:srcRect"))
-                    const srcB = toFract(getAttribute(blipFill, "b", "a:srcRect"))
-
-                    // cropped image is scaled so the visible part fills the frame
-                    const visibleW = 1 - srcL - srcR || 1
-                    const visibleH = 1 - srcT - srcB || 1
-                    imgW = 100 / visibleW
-                    imgH = 100 / visibleH
-                    imgX = -srcL * imgW
-                    imgY = -srcT * imgH
-                }
-
-                const [vbX, vbY, vbW, vbH] = [0, 0, svgWidth, svgHeight]
-                const uniqueId = `clip_${uid(5)}`
-                const pathData = paths.map((p) => p.d).join(" ")
-                const outline = stroke !== "none" ? `<path ${svgAttributes.replace(/^fill="[^"]*"/, 'fill="none"')} d="${pathData}"></path>` : ""
-
-                return `<svg data-shape="${shapeName}" xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" preserveAspectRatio="none" style="${svgStyle}">
-                        <defs>
-                            <clipPath id="${uniqueId}">
-                                <path${ruleAttr} d="${pathData}"></path>
-                            </clipPath>
-                        </defs>
-                        <image href="${image}" clip-path="url(#${uniqueId})" x="${vbX + (vbW * imgX) / 100}" y="${vbY + (vbH * imgY) / 100}" width="${(vbW * imgW) / 100}" height="${(vbH * imgH) / 100}" preserveAspectRatio="none" />
-                        ${outline}
-                    </svg>`
-            }
 
             if (!prstGeom) {
                 // custom shape
@@ -1433,6 +1355,7 @@ export class PowerPointPackage {
         item.style += Object.entries(pos)
             .map(([k, v]) => (v != null ? `${k}: ${round(v)}px;` : ""))
             .join("")
+        ;(item as any)._pos = { ...pos }
 
         // cropping
 
