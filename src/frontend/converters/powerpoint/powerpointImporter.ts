@@ -113,12 +113,10 @@ export function convertPowerpoint(files: any[]) {
                 const isNoTextSlide = textBlocks.length === 0 && !scriptureValues
 
                 // Helper: identifies items that belong to the master/layout background layer.
-                // These are already baked into the master bg PNG so we never need them as
-                // live slide items — including them would redundantly reload the same images
-                // on every slide render and cause visible latency.
+                // These are already baked into the master bg PNG so we strip them from text
+                // slide items — keeping them would cause redundant image loads every slide render.
                 const isBgLayerItem = (i: any) => {
-                    if (i.decoration) return true // master/layout decoration shape (e.g. watermark)
-                    // Full-canvas media item added by PowerPointHelper for the slide bgImage
+                    if (i.decoration) return true // master/layout decoration (watermark, logo etc.)
                     if (i.type === "media" && i._pos) {
                         const { left, top, width, height } = i._pos
                         if (left === 0 && top === 0 && width >= 1900 && height >= 1060) return true
@@ -126,56 +124,41 @@ export function convertPowerpoint(files: any[]) {
                     return false
                 }
 
-                // Pin the master background to every slide so it persists across
-                // transitions (no black/white flash). Also clear the per-slide bgColor
-                // so the PNG background image shows without a colour overlay behind it.
-                if (masterBgMediaId) {
-                    layoutData.background = masterBgMediaId
-                    slideData.settings = { ...slideData.settings, color: "" }
-                }
-
                 if (isNoTextSlide) {
-                    // ── Image / title slide ────────────────────────────────────────
-                    // Composite ONLY the slide-specific content (not decoration or bgImage
-                    // layers — those are already in the master bg). The resulting JPEG is
-                    // a lightweight overlay that sits on top of the persistent master bg.
-                    const slideSpecificItems = slide.items.filter((i: any) => !isBgLayerItem(i))
-                    const hasSlideContent = slideSpecificItems.length > 0
-
-                    if (shouldMergeNoTextSlides && hasSlideContent) {
-                        // Build a stripped slide: no bg color, no bgImage, no decoration —
-                        // just the slide's own picture shapes on a transparent canvas.
-                        const slideForOverlay = {
-                            ...slide,
-                            items: slideSpecificItems,
-                            bgColor: null,
-                            masterBgColor: null,
-                            bgImage: null
-                        }
-                        try {
-                            const composedPath = await compositeSlideImage(slideForOverlay, contentFolder, slideIdx)
-                            if (composedPath) {
-                                showMedia[uid()] = { name: `Slide ${slideIdx + 1} overlay`, path: composedPath, type: "image" }
-                                // Single full-screen overlay item; master bg provides the
-                                // background frame so this can be a smaller, lighter asset.
-                                slideData.items = [
-                                    { type: "media", src: composedPath, style: "top:0px;left:0px;width:1920px;height:1080px;", fit: "fill" } as any
-                                ]
+                    // ── Image / title slide ────────────────────────────────────────────
+                    // Composite the FULL slide visual (bg + master decorations + slide images)
+                    // into a single JPEG overlay item. This is the show title / image slide —
+                    // it already contains everything so we do NOT set a separate background
+                    // on it (the JPEG covers the full canvas).
+                    if (shouldMergeNoTextSlides) {
+                        const hasVisualItems =
+                            slide.items.some((i: any) => (i.type === "media" && i.src) || (i.type === "icon" && i.customSvg)) || !!slide.bgImage
+                        if (hasVisualItems) {
+                            try {
+                                const composedPath = await compositeSlideImage(slide, contentFolder, slideIdx)
+                                if (composedPath) {
+                                    showMedia[uid()] = { name: `Slide ${slideIdx + 1} overlay`, path: composedPath, type: "image" }
+                                    slideData.items = [
+                                        { type: "media", src: composedPath, style: "top:0px;left:0px;width:1920px;height:1080px;", fit: "fill" } as any
+                                    ]
+                                    slideData.settings = { ...slideData.settings, color: "" }
+                                }
+                            } catch (err) {
+                                console.error("Failed to composite image slide:", err)
                             }
-                        } catch (err) {
-                            console.error("Failed to composite image slide:", err)
                         }
-                    } else if (!shouldMergeNoTextSlides) {
-                        // Toggle off — keep items as-is.
                     }
                 } else if (masterBgMediaId) {
-                    // ── Text / verse / point slide ─────────────────────────────────
-                    // The master bg already contains the background photo and all
-                    // decorations. Strip those from the live items so FreeShow only
-                    // renders the text — no redundant image loads, no latency.
+                    // ── Text / verse / point slide ─────────────────────────────────────
+                    // Pin the master background (forest + watermark composited) so it
+                    // persists across transitions. Strip decoration and bgImage items since
+                    // they are already baked into the master bg PNG — keeping them as live
+                    // items causes redundant loads and latency on every slide render.
+                    layoutData.background = masterBgMediaId
+                    slideData.settings = { ...slideData.settings, color: "" }
                     slideData.items = slideData.items.filter((i: any) => !isBgLayerItem(i))
                 }
-                // ───────────────────────────────────────────────────────────────────
+                // ───────────────────────────────────────────────────────────────────────
 
 
                 if (!firstSlideId) {
