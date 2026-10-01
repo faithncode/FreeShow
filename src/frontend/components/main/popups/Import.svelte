@@ -151,18 +151,6 @@
         </span>
     </div>
 
-    <div style="margin-top: 8px;display: flex;flex-direction: column;gap: 6px;">
-        <MaterialToggleSwitch
-            label="settings.ppt_extract_text_slide_bg"
-            checked={$special.pptExtractTextSlideBg ?? false}
-            defaultValue={false}
-            on:change={(e) => updateSpecial(e.detail, "pptExtractTextSlideBg")}
-        />
-        <span style="font-size: 0.85em;opacity: 0.7;margin-inline-start: 36px;white-space: normal;">
-            {translateText("settings.ppt_extract_text_slide_bg_desc")}
-        </span>
-    </div>
-
     <Tip value="The best option would generally be to get a hold of the presentation as PDF format in the first place." top={20} />
 {:else if openedPage === "freeshow_more"}
     <MaterialButton class="popup-back" icon="back" iconSize={1.3} title="actions.back" on:click={() => (openedPage = "")} />

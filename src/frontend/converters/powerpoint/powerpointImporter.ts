@@ -22,11 +22,10 @@ export function convertPowerpoint(files: any[]) {
     if (categoryId === "all" || categoryId === "unlabeled") categoryId = createCategory("presentation", "presentation", { isDefault: true })
 
     const tempShows: any[] = []
+    // When ON: pin the master template background to every slide so it persists
+    // across transitions (no flash), then composite image/title slides as a
+    // full-screen JPEG overlay item on top of that persistent background.
     const shouldMergeNoTextSlides = get(special).pptMergeNoTextSlides ?? false
-    // When enabled, composite just the master/layout background layer (no text shapes)
-    // for verse and point slides, and use it as the FreeShow slide background.
-    // Deduplication: one background image per unique slide layout.
-    const shouldExtractTextSlideBg = get(special).pptExtractTextSlideBg ?? false
 
     setTimeout(async () => {
         for (const { name, content } of files) {
@@ -53,9 +52,32 @@ export function convertPowerpoint(files: any[]) {
             let layouts: SlideData[] = []
             let firstSlideId = ""
             const showMedia: Show["media"] = {}
-            // Per-layout background cache: layoutKey → mediaId already stored in showMedia.
-            // This ensures all slides sharing the same master layout reuse the same background PNG.
-            const layoutBgCache = new Map<string, string>()
+
+            // ── Phase 1: extract master background once per presentation ────────────
+            // We render only the background/decoration layers (no text) from the
+            // first slide that has any background image or decoration. All slides in
+            // the presentation then share this one PNG as their persistent background.
+            // This prevents the black/white flash that occurs when slide items (which
+            // contain the background image) briefly disappear during transitions.
+            let masterBgMediaId: string | null = null
+            if (shouldMergeNoTextSlides) {
+                const bgSourceSlide = convertedSlides.find(
+                    (s) => s && (!!s.bgImage || s.items.some((i: any) => i.decoration || (i.type === "media" && i.src)))
+                )
+                if (bgSourceSlide) {
+                    try {
+                        const bgPath = await compositeBackgroundOnly(bgSourceSlide, contentFolder, "master")
+                        if (bgPath) {
+                            const mediaId = uid()
+                            showMedia[mediaId] = { name: "Master background", path: bgPath, type: "image" }
+                            masterBgMediaId = mediaId
+                        }
+                    } catch (err) {
+                        console.error("Failed to extract master background:", err)
+                    }
+                }
+            }
+            // ───────────────────────────────────────────────────────────────────────
 
             for (let slideIdx = 0; slideIdx < convertedSlides.length; slideIdx++) {
                 const slide = convertedSlides[slideIdx]
@@ -86,72 +108,50 @@ export function convertPowerpoint(files: any[]) {
                 const noTransition = { type: "none", duration: 0, easing: "linear" } as const
                 const layoutData: SlideData = { id, transition: noTransition, mediaTransition: noTransition }
 
-                // ── No-text / mixed slide: merge all layers into a background image ─
-                // When toggle is ON, for slides with NO text content (and not scripture),
-                // composite master/layout background and ALL picture shapes into a single
-                // background image. Eliminates transparent-item transition flashes.
+                // ── Phase 2 per slide ────────────────────────────────────────────────
                 const textBlocks = extractTextBlocks(slide.items)
                 const isNoTextSlide = textBlocks.length === 0 && !scriptureValues
-                // A slide is "mixed" when it has both text AND visual image items
-                // (e.g. a decorative PNG behind the text from the slide itself, not the master).
-                // We also composite those, but only extract the slide-level images (all items).
-                const hasVisualItems = slide.items.some((i: any) => (i.type === "media" && i.src) || (i.type === "icon" && i.customSvg)) || !!slide.bgImage
 
-                if (shouldMergeNoTextSlides && isNoTextSlide && hasVisualItems) {
-                    try {
-                        const mergedImagePath = await compositeSlideImage(slide, contentFolder, slideIdx)
-                        if (mergedImagePath) {
-                            const mediaId = uid()
-                            showMedia[mediaId] = {
-                                name: `Slide ${slideIdx + 1}`,
-                                path: mergedImagePath,
-                                type: "image"
-                            }
-                            layoutData.background = mediaId
-                            slideData.settings = { ...slideData.settings, color: "" }
-                            slideData.items = []
-                        }
-                    } catch (err) {
-                        console.error("Failed to composite no-text slide:", err)
-                    }
+                // Pin the master background to this slide so it is always visible.
+                // For text/verse slides this is all we need — text items render on top.
+                if (masterBgMediaId) {
+                    layoutData.background = masterBgMediaId
+                    // Clear the per-slide bgColor so the master background image shows cleanly.
+                    slideData.settings = { ...slideData.settings, color: "" }
                 }
-                // ───────────────────────────────────────────────────────────────────
 
-                // ── Extract master template background for text/verse slides ────────
-                // When enabled, for slides that DO have text (verse, point, scripture),
-                // composite ONLY the background/decoration layers (master background image,
-                // layout decorations) — WITHOUT the text shapes — and store the result
-                // as the FreeShow slide background. One PNG is generated per unique layout
-                // and reused across all slides sharing that layout (deduplication).
-                const isTextSlide = textBlocks.length > 0
-                const hasBgLayers =
-                    !!slide.bgImage ||
-                    !!slide.bgColor ||
-                    !!slide.masterBgColor ||
-                    slide.items.some((i: any) => i.decoration)
-
-                if (shouldExtractTextSlideBg && isTextSlide && hasBgLayers && !layoutData.background) {
-                    const layoutKey = `${slide.layoutNumber ?? "x"}`
-                    const cachedMediaId = layoutBgCache.get(layoutKey)
-
-                    if (cachedMediaId) {
-                        // Reuse the already-rendered background for this layout.
-                        layoutData.background = cachedMediaId
-                    } else {
+                // For image/title slides (no text): composite the whole slide visual
+                // (bg + every image shape) into a single JPEG and keep it as a
+                // full-screen media ITEM — not as the background. Because the item
+                // sits on top of the persistent master background, the transition
+                // between slides only swaps items while the background remains,
+                // eliminating the black/white flash.
+                if (shouldMergeNoTextSlides && isNoTextSlide) {
+                    const hasVisualItems =
+                        slide.items.some((i: any) => (i.type === "media" && i.src) || (i.type === "icon" && i.customSvg)) || !!slide.bgImage
+                    if (hasVisualItems) {
                         try {
-                            const bgPath = await compositeBackgroundOnly(slide, contentFolder, layoutKey)
-                            if (bgPath) {
+                            const composedPath = await compositeSlideImage(slide, contentFolder, slideIdx)
+                            if (composedPath) {
                                 const mediaId = uid()
                                 showMedia[mediaId] = {
-                                    name: `Layout ${layoutKey} background`,
-                                    path: bgPath,
+                                    name: `Slide ${slideIdx + 1} overlay`,
+                                    path: composedPath,
                                     type: "image"
                                 }
-                                layoutData.background = mediaId
-                                layoutBgCache.set(layoutKey, mediaId)
+                                // Replace all slide items with a single full-screen overlay image.
+                                // The master background behind it provides visual continuity.
+                                slideData.items = [
+                                    {
+                                        type: "media",
+                                        src: composedPath,
+                                        style: "top:0px;left:0px;width:1920px;height:1080px;",
+                                        fit: "fill"
+                                    } as any
+                                ]
                             }
                         } catch (err) {
-                            console.error("Failed to extract layout background:", err)
+                            console.error("Failed to composite image slide:", err)
                         }
                     }
                 }
