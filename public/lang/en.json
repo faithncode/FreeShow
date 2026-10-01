@@ -1354,8 +1354,6 @@
         "media_import": "Media",
         "ppt_merge_no_text_slides": "Merge background and PNGs on image slides",
         "ppt_merge_no_text_slides_desc": "Extracts the master template background once and pins it to every slide so it persists across transitions (no black/white flash). Image-only slides are composited into a full-screen JPEG overlay on top of that background. Text and verse slides keep their content items and display on top of the shared background.",
-        "ppt_extract_text_slide_bg": "Extract template background for text slides",
-        "ppt_extract_text_slide_bg_desc": "Renders the master/layout template background (without text) once per slide layout and sets it as the FreeShow background for verse and point slides. All slides sharing the same layout reuse one image, so the PPT template visually matches in FreeShow.",
         "other": "Other",
         "language": "Language",
         "autosave": "Autosave",
