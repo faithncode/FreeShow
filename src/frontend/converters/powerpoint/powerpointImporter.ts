@@ -54,16 +54,31 @@ export function convertPowerpoint(files: any[]) {
             const showMedia: Show["media"] = {}
 
             // ── Phase 1: extract master background once per presentation ────────────
-            // We render only the background/decoration layers (no text) from the
-            // first slide that has any background image or decoration. All slides in
-            // the presentation then share this one PNG as their persistent background.
-            // This prevents the black/white flash that occurs when slide items (which
-            // contain the background image) briefly disappear during transitions.
+            // Render ONLY the background/decoration layers (bgImage + decoration shapes,
+            // no text or slide-specific images) from a verse/text slide and save it as
+            // a shared PNG that all slides reference via layoutData.background.
+            //
+            // WHY text slide as source:
+            //   • Text slides have the master bgImage and decoration shapes but no
+            //     slide-specific full-canvas images that would contaminate the result.
+            //   • Image/title slides may have their own full-canvas picture shapes which
+            //     compositeBackgroundOnly would incorrectly include (isBgMedia = true).
+            //
+            // The saved PNG goes into show.media so FreeShow can manage it like any
+            // other media asset — it "flows from the media", never from slide items.
             let masterBgMediaId: string | null = null
             if (shouldMergeNoTextSlides) {
-                const bgSourceSlide = convertedSlides.find(
-                    (s) => s && (!!s.bgImage || s.items.some((i: any) => i.decoration || (i.type === "media" && i.src)))
-                )
+                // Prefer a text/verse slide — it has master bg layers only (no slide images)
+                const bgSourceSlide =
+                    convertedSlides.find(
+                        (s) => s && s.items.some((i: any) => i.type === "text") &&
+                               (!!s.bgImage || s.items.some((i: any) => i.decoration))
+                    ) ||
+                    // Fallback: any slide that has a bgImage or decoration shapes
+                    convertedSlides.find(
+                        (s) => s && (!!s.bgImage || s.items.some((i: any) => i.decoration))
+                    )
+
                 if (bgSourceSlide) {
                     try {
                         const bgPath = await compositeBackgroundOnly(bgSourceSlide, contentFolder, "master")
