@@ -73,16 +73,116 @@ function getItemCrop(item: any): { left: number; top: number; right: number; bot
     return { left: l, top: t, right: r, bottom: b }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Core canvas drawing helper — shared by both export functions.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function drawItemsOntoContext(
+    ctx: CanvasRenderingContext2D,
+    items: any[],
+    targetWidth: number,
+    targetHeight: number,
+    bgColor: string | null | undefined,
+    masterBgColor: string | null | undefined,
+    bgItemsOnly: boolean
+): Promise<void> {
+    // 1. Draw base background fill
+    const bgFill = bgColor || masterBgColor || ""
+    if (bgFill && bgFill !== "transparent") {
+        ctx.fillStyle = bgFill
+        ctx.fillRect(0, 0, targetWidth, targetHeight)
+    }
+
+    // 2. Iterate items in their natural z-order
+    for (const item of items || []) {
+        // In bg-only mode, skip items that are NOT decoration/background layers.
+        // An item is a background layer when it either:
+        //  a) has item.decoration === true  (set by PowerPointHelper for master/layout shapes)
+        //  b) is a full-canvas media item that serves as the slide background image
+        //     (top:0, left:0, width:1920, height:1080 — added by PowerPointHelper for bgImage)
+        if (bgItemsOnly) {
+            const isDecoration = !!item.decoration
+            const pos = parseItemPosition(item)
+            const isFullCanvas = pos.left === 0 && pos.top === 0 && pos.width >= 1900 && pos.height >= 1060
+            const isBgMedia = item.type === "media" && isFullCanvas
+            if (!isDecoration && !isBgMedia) continue
+        }
+
+        if (item.type === "media" && item.src) {
+            // Skip video elements
+            const ext = (item.src.split(".").pop() || "").toLowerCase()
+            if (["mp4", "webm", "mov", "mkv", "avi"].includes(ext) || item.loop !== undefined) continue
+
+            const img = await loadImage(item.src)
+            if (!img) continue
+
+            const iw = img.naturalWidth || 1
+            const ih = img.naturalHeight || 1
+            const crop = getItemCrop(item)
+
+            let sx = 0,
+                sy = 0,
+                sWidth = iw,
+                sHeight = ih
+
+            if (crop.left + crop.right < 1 && crop.top + crop.bottom < 1) {
+                sx = Math.round(iw * crop.left)
+                sy = Math.round(ih * crop.top)
+                sWidth = Math.max(1, Math.round(iw * (1 - crop.left - crop.right)))
+                sHeight = Math.max(1, Math.round(ih * (1 - crop.top - crop.bottom)))
+            }
+
+            const pos = parseItemPosition(item)
+            const opacity = parseItemOpacity(item.style)
+
+            ctx.save()
+            if (opacity < 1) ctx.globalAlpha = opacity
+            ctx.drawImage(img, sx, sy, sWidth, sHeight, pos.left, pos.top, pos.width, pos.height)
+            ctx.restore()
+        } else if (item.type === "icon" && item.customSvg) {
+            // Render SVG icon shape
+            const svgUrl = "data:image/svg+xml;utf8," + encodeURIComponent(item.customSvg)
+            const img = await loadImage(svgUrl)
+            if (img) {
+                const pos = parseItemPosition(item)
+                const opacity = parseItemOpacity(item.style)
+                ctx.save()
+                if (opacity < 1) ctx.globalAlpha = opacity
+                ctx.drawImage(img, 0, 0, img.naturalWidth || pos.width, img.naturalHeight || pos.height, pos.left, pos.top, pos.width, pos.height)
+                ctx.restore()
+            }
+        }
+    }
+}
+
 /**
- * Composite a no-text PowerPoint slide into a single high-quality PNG image.
+ * Save a canvas as a PNG to disk (or return base64 if no folder given).
+ */
+async function saveCanvasToDisk(canvas: HTMLCanvasElement, contentFolder: string, fileName: string): Promise<string> {
+    const base64 = canvas.toDataURL("image/png")
+    if (!contentFolder) return base64
+
+    const targetPath = `${contentFolder.replace(/[/\\]+$/, "")}/${fileName}`
+    try {
+        const savedPath = await requestMain(Main.SAVE_IMAGE, { path: targetPath, base64, format: "png" })
+        return savedPath || targetPath
+    } catch (e) {
+        console.warn("Could not save composited slide image to disk, falling back to base64:", e)
+        return base64
+    }
+}
+
+/**
+ * Composite a no-text (or mixed image+text) PowerPoint slide into a single PNG.
  *
  * Merges:
  *  1. Slide / Layout / Master background fill color or gradient.
- *  2. Master slide template background picture (if present).
+ *  2. Master slide template background picture.
  *  3. Master / Layout decoration pictures.
- *  4. Slide picture shapes (PNGs, etc.) with exact positioning, dimensions, opacity, and PowerPoint crops (a:srcRect).
+ *  4. ALL slide picture shapes (PNGs, etc.) with exact positioning, opacity, and PPT crops.
  *
- * Saves the composited PNG to the presentation's import media folder on disk and returns its path.
+ * Use for: pure image slides, or slides where you want the whole visual composited.
+ * Saves the PNG to the presentation's import media folder and returns its path.
  */
 export async function compositeSlideImage(
     slide: {
@@ -102,75 +202,53 @@ export async function compositeSlideImage(
     const ctx = canvas.getContext("2d")
     if (!ctx) return ""
 
-    // 1. Draw base background fill (slide bgColor or master/layout fallback)
-    const bgFill = slide.bgColor || slide.masterBgColor || ""
-    if (bgFill && bgFill !== "transparent") {
-        ctx.fillStyle = bgFill
-        ctx.fillRect(0, 0, targetWidth, targetHeight)
-    }
+    await drawItemsOntoContext(ctx, slide.items, targetWidth, targetHeight, slide.bgColor, slide.masterBgColor, false)
 
-    // 2. Iterate through items in their natural z-order (master/bg items first, then slide pictures)
-    for (const item of slide.items || []) {
-        if (item.type === "media" && item.src) {
-            // Skip video elements
-            const ext = (item.src.split(".").pop() || "").toLowerCase()
-            if (["mp4", "webm", "mov", "mkv", "avi"].includes(ext) || item.loop !== undefined) {
-                continue
-            }
-
-            const img = await loadImage(item.src)
-            if (!img) continue
-
-            const iw = img.naturalWidth || 1
-            const ih = img.naturalHeight || 1
-            const crop = getItemCrop(item)
-
-            let sx = 0
-            let sy = 0
-            let sWidth = iw
-            let sHeight = ih
-
-            if (crop.left + crop.right < 1 && crop.top + crop.bottom < 1) {
-                sx = Math.round(iw * crop.left)
-                sy = Math.round(ih * crop.top)
-                sWidth = Math.max(1, Math.round(iw * (1 - crop.left - crop.right)))
-                sHeight = Math.max(1, Math.round(ih * (1 - crop.top - crop.bottom)))
-            }
-
-            const pos = parseItemPosition(item)
-            const opacity = parseItemOpacity(item.style)
-
-            ctx.save()
-            if (opacity < 1) ctx.globalAlpha = opacity
-            ctx.drawImage(img, sx, sy, sWidth, sHeight, pos.left, pos.top, pos.width, pos.height)
-            ctx.restore()
-        } else if (item.type === "icon" && item.customSvg) {
-            // Render vector SVG shape if present
-            const svgUrl = "data:image/svg+xml;utf8," + encodeURIComponent(item.customSvg)
-            const img = await loadImage(svgUrl)
-            if (img) {
-                const pos = parseItemPosition(item)
-                const opacity = parseItemOpacity(item.style)
-                ctx.save()
-                if (opacity < 1) ctx.globalAlpha = opacity
-                ctx.drawImage(img, 0, 0, img.naturalWidth || pos.width, img.naturalHeight || pos.height, pos.left, pos.top, pos.width, pos.height)
-                ctx.restore()
-            }
-        }
-    }
-
-    const base64 = canvas.toDataURL("image/png")
-    if (!contentFolder) return base64
-
-    // Save to disk in presentation's import media folder
     const fileName = `slide_${slideIndex + 1}_bg_${uid(6)}.png`
-    const targetPath = `${contentFolder.replace(/[/\\]+$/, "")}/${fileName}`
+    return saveCanvasToDisk(canvas, contentFolder, fileName)
+}
 
-    try {
-        const savedPath = await requestMain(Main.SAVE_IMAGE, { path: targetPath, base64, format: "png" })
-        return savedPath || targetPath
-    } catch (e) {
-        console.warn("Could not save composited slide image to disk, falling back to base64:", e)
-        return base64
-    }
+/**
+ * Composite ONLY the background / master template layers of a slide into a PNG,
+ * skipping all text-box items. This produces the "template background" image that
+ * can be set as the FreeShow slide background so the text overlay renders on top.
+ *
+ * Merges:
+ *  1. bgColor / masterBgColor fill.
+ *  2. Full-canvas bgImage (the slide or master background blip image).
+ *  3. Decoration items from master / layout (item.decoration === true).
+ *
+ * The result is deduplicated per layout: the caller should check `layoutBgCache`
+ * before calling this and store the result back into it.
+ *
+ * @param slide        - The converted slide object from PowerPointHelper.
+ * @param contentFolder - Folder path where the PNG is saved on disk.
+ * @param layoutKey    - A unique string identifying this layout (e.g. "layout_2").
+ *                       Used only for the filename — dedup is handled by the caller.
+ * @param targetWidth  - Canvas width (default 1920).
+ * @param targetHeight - Canvas height (default 1080).
+ */
+export async function compositeBackgroundOnly(
+    slide: {
+        items: any[]
+        bgColor?: string | null
+        masterBgColor?: string | null
+        bgImage?: string | null
+        layoutNumber?: number
+    },
+    contentFolder: string,
+    layoutKey: string,
+    targetWidth = 1920,
+    targetHeight = 1080
+): Promise<string> {
+    const canvas = document.createElement("canvas")
+    canvas.width = targetWidth
+    canvas.height = targetHeight
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return ""
+
+    await drawItemsOntoContext(ctx, slide.items, targetWidth, targetHeight, slide.bgColor, slide.masterBgColor, true)
+
+    const fileName = `layout_bg_${layoutKey}_${uid(6)}.png`
+    return saveCanvasToDisk(canvas, contentFolder, fileName)
 }

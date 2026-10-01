@@ -7,7 +7,7 @@ import { activePopup, alertMessage, drawerTabsData, special } from "../../stores
 import { translateText } from "../../utils/language"
 import { createCategory, setTempShows } from "../importHelpers"
 import { PowerPointPackage } from "./PowerPointHelper"
-import { compositeSlideImage } from "./powerpointCompositor"
+import { compositeBackgroundOnly, compositeSlideImage } from "./powerpointCompositor"
 
 // missing shapes/tables/graphs
 // item/line background, some text color incorrect
@@ -23,6 +23,10 @@ export function convertPowerpoint(files: any[]) {
 
     const tempShows: any[] = []
     const shouldMergeNoTextSlides = get(special).pptMergeNoTextSlides ?? false
+    // When enabled, composite just the master/layout background layer (no text shapes)
+    // for verse and point slides, and use it as the FreeShow slide background.
+    // Deduplication: one background image per unique slide layout.
+    const shouldExtractTextSlideBg = get(special).pptExtractTextSlideBg ?? false
 
     setTimeout(async () => {
         for (const { name, content } of files) {
@@ -49,6 +53,9 @@ export function convertPowerpoint(files: any[]) {
             let layouts: SlideData[] = []
             let firstSlideId = ""
             const showMedia: Show["media"] = {}
+            // Per-layout background cache: layoutKey → mediaId already stored in showMedia.
+            // This ensures all slides sharing the same master layout reuse the same background PNG.
+            const layoutBgCache = new Map<string, string>()
 
             for (let slideIdx = 0; slideIdx < convertedSlides.length; slideIdx++) {
                 const slide = convertedSlides[slideIdx]
@@ -79,32 +86,72 @@ export function convertPowerpoint(files: any[]) {
                 const noTransition = { type: "none", duration: 0, easing: "linear" } as const
                 const layoutData: SlideData = { id, transition: noTransition, mediaTransition: noTransition }
 
-                // ── No-text slide background & PNG merging ─────────────────────────
-                // When enabled, for slides with NO text content (and not scripture),
-                // composite master/layout background and picture shapes into a single
-                // background image. This eliminates transparent item transition flashes
-                // (dip to black/white) and keeps the composited image as background.
+                // ── No-text / mixed slide: merge all layers into a background image ─
+                // When toggle is ON, for slides with NO text content (and not scripture),
+                // composite master/layout background and ALL picture shapes into a single
+                // background image. Eliminates transparent-item transition flashes.
                 const textBlocks = extractTextBlocks(slide.items)
                 const isNoTextSlide = textBlocks.length === 0 && !scriptureValues
+                // A slide is "mixed" when it has both text AND visual image items
+                // (e.g. a decorative PNG behind the text from the slide itself, not the master).
+                // We also composite those, but only extract the slide-level images (all items).
+                const hasVisualItems = slide.items.some((i: any) => (i.type === "media" && i.src) || (i.type === "icon" && i.customSvg)) || !!slide.bgImage
 
-                if (shouldMergeNoTextSlides && isNoTextSlide) {
-                    const hasMedia = slide.items.some((i: any) => (i.type === "media" && i.src) || (i.type === "icon" && i.customSvg)) || !!slide.bgImage
-                    if (hasMedia) {
+                if (shouldMergeNoTextSlides && isNoTextSlide && hasVisualItems) {
+                    try {
+                        const mergedImagePath = await compositeSlideImage(slide, contentFolder, slideIdx)
+                        if (mergedImagePath) {
+                            const mediaId = uid()
+                            showMedia[mediaId] = {
+                                name: `Slide ${slideIdx + 1}`,
+                                path: mergedImagePath,
+                                type: "image"
+                            }
+                            layoutData.background = mediaId
+                            slideData.settings = { ...slideData.settings, color: "" }
+                            slideData.items = []
+                        }
+                    } catch (err) {
+                        console.error("Failed to composite no-text slide:", err)
+                    }
+                }
+                // ───────────────────────────────────────────────────────────────────
+
+                // ── Extract master template background for text/verse slides ────────
+                // When enabled, for slides that DO have text (verse, point, scripture),
+                // composite ONLY the background/decoration layers (master background image,
+                // layout decorations) — WITHOUT the text shapes — and store the result
+                // as the FreeShow slide background. One PNG is generated per unique layout
+                // and reused across all slides sharing that layout (deduplication).
+                const isTextSlide = textBlocks.length > 0
+                const hasBgLayers =
+                    !!slide.bgImage ||
+                    !!slide.bgColor ||
+                    !!slide.masterBgColor ||
+                    slide.items.some((i: any) => i.decoration)
+
+                if (shouldExtractTextSlideBg && isTextSlide && hasBgLayers && !layoutData.background) {
+                    const layoutKey = `${slide.layoutNumber ?? "x"}`
+                    const cachedMediaId = layoutBgCache.get(layoutKey)
+
+                    if (cachedMediaId) {
+                        // Reuse the already-rendered background for this layout.
+                        layoutData.background = cachedMediaId
+                    } else {
                         try {
-                            const mergedImagePath = await compositeSlideImage(slide, contentFolder, slideIdx)
-                            if (mergedImagePath) {
+                            const bgPath = await compositeBackgroundOnly(slide, contentFolder, layoutKey)
+                            if (bgPath) {
                                 const mediaId = uid()
                                 showMedia[mediaId] = {
-                                    name: `Slide ${slideIdx + 1}`,
-                                    path: mergedImagePath,
+                                    name: `Layout ${layoutKey} background`,
+                                    path: bgPath,
                                     type: "image"
                                 }
                                 layoutData.background = mediaId
-                                slideData.settings = { ...slideData.settings, color: "" }
-                                slideData.items = []
+                                layoutBgCache.set(layoutKey, mediaId)
                             }
                         } catch (err) {
-                            console.error("Failed to composite no-text slide:", err)
+                            console.error("Failed to extract layout background:", err)
                         }
                     }
                 }
