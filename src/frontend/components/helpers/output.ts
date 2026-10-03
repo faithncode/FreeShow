@@ -1098,14 +1098,15 @@ function mergeTextDecoration(templateTextStyle = "", originalTextStyle = "", pre
     return Array.from(templateDecorations).join(" ")
 }
 
-function applyMixedTextFormatting(style: string, textStyle: string | undefined, templateStyle: string | undefined, textFormatSets: TextFormatSets, templateClicked: boolean) {
+function applyMixedTextFormatting(style: string, textStyle: string | undefined, templateStyle: string | undefined, textFormatSets: TextFormatSets, templateClicked: boolean, matchParentColor: boolean = false) {
     if (templateClicked) return style
 
     const textStyles = getStyles(textStyle)
 
-    // add original text color, if template is not clicked & slide text has multiple colors
-    // - use template color if item text has just one color
-    if (textFormatSets.colors.size > 1) {
+    // add original text color when:
+    // - slide text has multiple different colors (preserve per-word coloring), OR
+    // - matchParentColor is enabled on the template (always preserve original color)
+    if (textFormatSets.colors.size > 1 || (matchParentColor && textStyles.color)) {
         const textColor = textStyles.color || "#FFFFFF"
         style += `color: ${textColor};`
     }
@@ -1152,7 +1153,7 @@ function getTextFormatSets(item: Item): TextFormatSets {
     )
 }
 
-export function mergeWithTemplate(slideItems: Item[], templateItems: Item[], addOverflowTemplateItems = false, resetAutoSize = true, templateClicked = false, mode: string = "", customDynamicValues: { [key: string]: string | [string, string][] } = {}) {
+export function mergeWithTemplate(slideItems: Item[], templateItems: Item[], addOverflowTemplateItems = false, resetAutoSize = true, templateClicked = false, mode: string = "", customDynamicValues: { [key: string]: string | [string, string][] } = {}, matchParentColor: boolean = false) {
     slideItems = clone(slideItems || []).filter(Boolean)
     if (!templateItems.length) return slideItems
 
@@ -1262,7 +1263,7 @@ export function mergeWithTemplate(slideItems: Item[], templateItems: Item[], add
 
                 if (!text.customType?.includes("disableTemplate") && !/\{scripture(?:\d+)?_number\}/.test(templateText?.value || "")) {
                     let style = templateText?.style || ""
-                    style = applyMixedTextFormatting(style, text.style, templateText?.style, textFormatSets, templateClicked)
+                    style = applyMixedTextFormatting(style, text.style, templateText?.style, textFormatSets, templateClicked, matchParentColor)
 
                     text.style = style
                 }
@@ -1690,7 +1691,8 @@ export function setTemplateStyle(outSlide: OutSlide | null, currentStyle: Styles
     //     outputId
     // })
 
-    const newItems = mergeWithTemplate(slideItems || [], templateItems, true, true, false, mode, customDynamicValues) || []
+    const matchParentColor = !!(template?.settings?.matchParentColor)
+    const newItems = mergeWithTemplate(slideItems || [], templateItems, true, true, false, mode, customDynamicValues, matchParentColor) || []
     newItems.push(...getSlideItemsFromTemplate(template.settings || {}))
 
     // console.log("[DEBUG - setTemplateStyle] After merge", {

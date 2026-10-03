@@ -570,6 +570,7 @@ export interface TemplateSettings {
     firstSlideTemplate?: string
     maxLinesPerSlide?: number | string // auto break slides if more than set lines
     breakLongLines?: number | string // auto break lines if longer than set words
+    matchParentColor?: boolean // preserve original slide text color instead of applying template color
     actions?: any[]
     styleOverrides?: TemplateStyleOverride[]
 }
