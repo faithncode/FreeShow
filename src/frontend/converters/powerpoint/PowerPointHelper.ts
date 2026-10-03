@@ -1030,18 +1030,27 @@ export class PowerPointPackage {
         // overflow: visible lets non-Latin descenders (Tamil, etc.) breathe outside tight boxes
         let style = "box-sizing: border-box; overflow: visible;"
 
-        // placeholders inherit shape properties from the layout/master placeholder
-        const spPr = mergeShapeProperties([shape.shape, shape.layoutShape, shape.masterShape].map((s) => getValue(s, "p:spPr")))
-        const flipH = getAttribute(spPr, "flipH", "a:xfrm") === "1"
-        const flipV = getAttribute(spPr, "flipV", "a:xfrm") === "1"
-        const rot = getAttribute(spPr, "rot", "a:xfrm") || "0"
+        const spPrs = [getValue(shape.shape, "p:spPr"), getValue(shape.layoutShape, "p:spPr"), getValue(shape.masterShape, "p:spPr")]
+        const spPr = spPrs.find((p) => p?.length) || []
+
+        const getSpPrAttr = (key: string, tagName = "a:xfrm") => {
+            for (const sp of spPrs) {
+                if (!sp?.length) continue
+                const val = getAttribute(sp, key, tagName)
+                if (val !== "") return val
+            }
+            return ""
+        }
+
+        const flipH = getSpPrAttr("flipH") === "1"
+        const flipV = getSpPrAttr("flipV") === "1"
+        const rot = getSpPrAttr("rot") || "0"
         const rotate = parseFloat(rot) / 60000 // convert 60,000ths of a degree to degrees
 
-        // shapes are flipped before they are rotated
         const transforms: string[] = []
-        if (rotate) transforms.push(`rotate(${rotate}deg)`)
         if (flipH) transforms.push("scaleX(-1)")
         if (flipV) transforms.push("scaleY(-1)")
+        if (rotate) transforms.push(`rotate(${rotate}deg)`)
         if (transforms.length) style += `transform: ${transforms.join(" ")};`
 
         let item: Item = {
@@ -1127,8 +1136,10 @@ export class PowerPointPackage {
                     strokeMiterlimit = miterLim ? Math.max(1, parseFloat(miterLim) / 100000) : 4
                 }
             } else if (shape.name === "p:cxnSp") {
-                stroke = resolveColor(getValue(spPr, "a:ln", "a:schemeClr"), ctx.colors) || "#ffffff"
-                strokeWidth = 1
+                const lineClr = resolveColor(getValue(spPr, "a:ln", "a:solidFill"), ctx.colors) || resolveColor(getValue(spPr, "a:ln", "a:schemeClr"), ctx.colors)
+                stroke = lineClr || "#ffffff"
+                const lnW = getAttribute(spPr, "w", "a:ln") || getAttribute(getValue(spPr, "a:ln"), "w") || "0"
+                strokeWidth = lnW && lnW !== "0" ? Math.max(1, round((emuToPixels(lnW) || 1) * (ctx.scale?.factor ?? 1))) : 1
             }
 
             if (fill === "none" && stroke === "none" && !image) return null
@@ -1806,23 +1817,34 @@ function getBulletValue(type: string, index: number) {
         return `${value}.`
     }
 
-    function toRoman(num: number) {
-        const val = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
-        const syms = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"]
-        let roman = ""
-        for (let i = 0; i < val.length; i++) {
-            while (num >= val[i]) {
-                num -= val[i]
-                roman += syms[i]
-            }
+    const prst = getAttribute(solidFill, "val", "a:prstClr")
+    if (prst) {
+        return prst
+    }
+
+    let scheme = getAttribute(solidFill, "val", "a:schemeClr")
+    if (!scheme.startsWith("a:")) scheme = "a:" + scheme
+    if (scheme) {
+        let themeClr = getValue(colors, scheme)
+        if (!themeClr.length) {
+            if (scheme === "a:tx1") themeClr = getValue(colors, "a:dk1")
+            else if (scheme === "a:bg1") themeClr = getValue(colors, "a:lt1")
+            else if (scheme === "a:tx2") themeClr = getValue(colors, "a:dk2")
+            else if (scheme === "a:bg2") themeClr = getValue(colors, "a:lt2")
         }
         return roman
     }
 }
 
-function escapeHtml(text: string) {
-    return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
-}
+        const lumMod = getAttribute(getValue(solidFill, "a:schemeClr"), "val", "a:lumMod")
+        const lumOff = getAttribute(getValue(solidFill, "a:schemeClr"), "val", "a:lumOff")
+        let color = resolveColor(themeClr, colors, { lumMod, lumOff })
+        if (!color) {
+            if (scheme === "a:bg1" || scheme === "a:lt1") color = "#ffffff"
+            else if (scheme === "a:tx1" || scheme === "a:dk1") color = "#000000"
+            else if (scheme === "a:bg2" || scheme === "a:lt2") color = "#e7e6e6"
+            else if (scheme === "a:tx2" || scheme === "a:dk2") color = "#44546a"
+        }
 
 const colorTypes = ["a:srgbClr", "a:schemeClr", "a:sysClr", "a:prstClr", "a:scrgbClr", "a:hslClr"]
 const presetColors: { [key: string]: string } = { black: "000000", white: "FFFFFF", red: "FF0000", green: "008000", blue: "0000FF", yellow: "FFFF00", gray: "808080", ltGray: "D3D3D3", dkGray: "A9A9A9", orange: "FFA500", purple: "800080", cyan: "00FFFF", magenta: "FF00FF" }
