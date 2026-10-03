@@ -149,9 +149,14 @@ export function convertPowerpoint(files: any[]) {
                 if (isNoTextSlide) {
                     // ── Image / title slide ────────────────────────────────────────────
                     // Composite the FULL slide visual (bg + master decorations + slide images)
-                    // into a single JPEG overlay item. This is the show title / image slide —
-                    // it already contains everything so we do NOT set a separate background
-                    // on it (the JPEG covers the full canvas).
+                    // into a single PNG and register it as the slide's background media.
+                    //
+                    // WHY background instead of a slide item:
+                    //   Text slides use layoutData.background (a persistent <Background> layer).
+                    //   If we put the title image as a slide *item* instead, switching from a
+                    //   text slide causes: background disappears instantly → blank canvas →
+                    //   item image loads async → fades in. Using background for both slide
+                    //   types means the switch is an instant same-layer swap — no gap.
                     if (shouldMergeNoTextSlides) {
                         const hasVisualItems =
                             slide.items.some((i: any) => (i.type === "media" && i.src) || (i.type === "icon" && i.customSvg)) || !!slide.bgImage
@@ -159,10 +164,12 @@ export function convertPowerpoint(files: any[]) {
                             try {
                                 const composedPath = await compositeSlideImage(slide, contentFolder, slideIdx)
                                 if (composedPath) {
-                                    showMedia[uid()] = { name: `Slide ${slideIdx + 1} overlay`, path: composedPath, type: "image" }
-                                    slideData.items = [
-                                        { type: "media", src: composedPath, style: "top:0px;left:0px;width:1920px;height:1080px;", fit: "fill" } as any
-                                    ]
+                                    const slideMediaId = uid()
+                                    showMedia[slideMediaId] = { name: `Slide ${slideIdx + 1} image`, path: composedPath, type: "image" }
+                                    // Set as background (same layer as text slides' master bg) so
+                                    // the transition between text ↔ title is an instant bg swap.
+                                    layoutData.background = slideMediaId
+                                    slideData.items = []
                                     slideData.settings = { ...slideData.settings, color: "" }
                                 }
                             } catch (err) {
