@@ -81,6 +81,8 @@
             <MaterialFilePicker label="edit.background_media" value={settings.backgroundPath} filter={{ name: "Media files", extensions: mediaExtensions }} on:change={(e) => setValue(e, "backgroundPath")} allowEmpty />
             <!-- {#if settings.backgroundPath}<MaterialButton title="titlebar.edit" icon="edit" on:click={editBackgroundImage} />{/if} -->
         </InputRow>
+
+        <MaterialToggleSwitch label="edit.match_parent_color" checked={!!settings?.matchParentColor} defaultValue={false} on:change={(e) => setValue(e, "matchParentColor")} />
     </div>
 
     {#if mode !== "scripture"}
@@ -94,7 +96,6 @@
 
             <MaterialNumberInput label="edit.max_lines_per_slide" value={Number(settings?.maxLinesPerSlide) || 0} max={100} on:change={(e) => setValue(e, "maxLinesPerSlide")} />
             <MaterialNumberInput label="edit.break_long_lines_tip" value={Number(settings?.breakLongLines) || 0} max={100} on:change={(e) => setValue(e, "breakLongLines")} />
-            <MaterialToggleSwitch label="edit.match_parent_color" checked={!!settings?.matchParentColor} defaultValue={false} on:change={(e) => setValue(e, "matchParentColor")} />
         </div>
     {/if}
 
