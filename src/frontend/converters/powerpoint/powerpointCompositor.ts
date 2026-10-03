@@ -197,7 +197,12 @@ async function saveCanvasToDisk(canvas: HTMLCanvasElement, contentFolder: string
     const base64 = canvas.toDataURL("image/png")
     if (!contentFolder) return base64
 
-    const targetPath = `${contentFolder.replace(/[/\\]+$/, "")}/${fileName}`
+    // Detect the separator used by the OS from the folder path itself.
+    // On Windows contentFolder arrives as a native backslash path; always
+    // joining with "/" produces mixed separators that break Electron's
+    // file-URL encoding on Windows.
+    const sep = contentFolder.includes("\\") ? "\\" : "/"
+    const targetPath = `${contentFolder.replace(/[/\\]+$/, "")}${sep}${fileName}`
     try {
         const savedPath = await requestMain(Main.SAVE_IMAGE, { path: targetPath, base64, format: "png" })
         return savedPath || targetPath
