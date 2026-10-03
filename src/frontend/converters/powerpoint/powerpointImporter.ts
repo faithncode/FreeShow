@@ -127,11 +127,18 @@ export function convertPowerpoint(files: any[]) {
                 const textBlocks = extractTextBlocks(slide.items)
                 const isNoTextSlide = textBlocks.length === 0 && !scriptureValues
 
-                // Helper: identifies items that belong to the master/layout background layer.
+                // Helper: identifies items that belong to the master/layout BACKGROUND MEDIA layer.
                 // These are already baked into the master bg PNG so we strip them from text
-                // slide items — keeping them would cause redundant image loads every slide render.
+                // slide items — keeping them would cause redundant image loads every render.
+                //
+                // IMPORTANT: only strip MEDIA decoration items (background photo watermarks).
+                // Non-media decorations (shapes, SVGs — e.g. the rounded-rectangle reference
+                // pill from the layout) must remain as slide items so they render correctly
+                // in FreeShow. They are not images that can be baked into the bg PNG.
                 const isBgLayerItem = (i: any) => {
-                    if (i.decoration) return true // master/layout decoration (watermark, logo etc.)
+                    // Media image from master/layout (watermark, logo photo tagged as decoration)
+                    if (i.decoration && i.type === "media") return true
+                    // Full-canvas bgImage added by PowerPointHelper (type:"media", pos: 0,0,1920,1080)
                     if (i.type === "media" && i._pos) {
                         const { left, top, width, height } = i._pos
                         if (left === 0 && top === 0 && width >= 1900 && height >= 1060) return true

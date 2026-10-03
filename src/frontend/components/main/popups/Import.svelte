@@ -60,15 +60,27 @@
     const media_formats = [
         { name: "Lessons.church", title: "ChurchApps\nhttps://lessons.church", extensions: ["json", "olp", "olf"], id: "lessons" },
         { name: "PDF", title: "Added to your project", extensions: ["pdf"], id: "pdf" },
+        { name: "Sermon PPT", title: "Microsoft PowerPoint – merges background & image slides into full-screen JPEGs.", extensions: ["ppt", "pptx"], id: "sermon_ppt", icon: "powerpoint" },
         { name: "PowerPoint", extensions: [], id: "powerpoint" }
     ]
 
     const powerpoint_options = [
+        { name: "Sermon PPT", description: "Microsoft PowerPoint – merges background & image slides into full-screen JPEGs. Best for church/sermon presentations.", icon: "powerpoint", click: pptSermon },
         { name: "info.slides", description: "Imperfect formatting.", icon: "txt", click: pptText },
         { name: "PDF", description: "Requires LibreOffice installed.", icon: "pdf", click: libreOfficeConvert },
         { name: "PDF (Online)", description: "Requires network connection, and manual steps.", icon: "pdf", click: onlineConvert },
         { name: "Controller (Deprecated)", description: "Requires PowerPoint/Keynote installed. Useful for live streams, but buggy.", icon: "powerkey", click: pptController }
     ]
+
+    function pptSermon() {
+        // Enable merge-to-JPEG compositing for the best church/sermon experience
+        special.update((a) => {
+            a.pptMergeNoTextSlides = true
+            return a
+        })
+        sendMain(Main.IMPORT, { channel: "powerpoint", format: { name: "PowerPoint", extensions: ["ppt", "pptx"] } })
+        activePopup.set(null)
+    }
 
     function pptText() {
         sendMain(Main.IMPORT, { channel: "powerpoint", format: { name: "PowerPoint", extensions: ["ppt", "pptx"] } })
@@ -305,11 +317,16 @@
                             return
                         }
 
+                        if (format.id === "sermon_ppt") {
+                            pptSermon()
+                            return
+                        }
+
                         sendMain(Main.IMPORT, { channel: format.id, format })
                         displayTutorial(format)
                     }}
                 >
-                    <img style="height: 60px;width: 70px;" src="./import-logos/{format.id}.webp" alt="{format.id}-logo" draggable={false} />
+                    <img style="height: 60px;width: 70px;" src="./import-logos/{format.icon ?? format.id}.webp" alt="{format.id}-logo" draggable={false} />
                     <p>{format.name}</p>
                 </MaterialButton>
 

@@ -925,17 +925,28 @@ export class PowerPointPackage {
         // overflow: visible lets non-Latin descenders (Tamil, etc.) breathe outside tight boxes
         let style = "box-sizing: border-box; overflow: visible;"
 
-        const spPr = getValue(shape.shape, "p:spPr")
-        const flipH = getAttribute(spPr, "flipH", "a:xfrm") === "1"
-        const flipV = getAttribute(spPr, "flipV", "a:xfrm") === "1"
-        const rot = getAttribute(spPr, "rot", "a:xfrm") || "0"
+        const spPrs = [getValue(shape.shape, "p:spPr"), getValue(shape.layoutShape, "p:spPr"), getValue(shape.masterShape, "p:spPr")]
+        const spPr = spPrs.find((p) => p?.length) || []
+
+        const getSpPrAttr = (key: string, tagName = "a:xfrm") => {
+            for (const sp of spPrs) {
+                if (!sp?.length) continue
+                const val = getAttribute(sp, key, tagName)
+                if (val !== "") return val
+            }
+            return ""
+        }
+
+        const flipH = getSpPrAttr("flipH") === "1"
+        const flipV = getSpPrAttr("flipV") === "1"
+        const rot = getSpPrAttr("rot") || "0"
         const rotate = parseFloat(rot) / 60000 // convert 60,000ths of a degree to degrees
 
-        let transform = ""
-        if (flipH) transform += " scaleX(-1);"
-        if (flipV) transform += " scaleY(-1);"
-        if (rotate) transform += ` rotate(${rotate}deg);`
-        if (transform) style += `transform: ${transform};`
+        const transforms: string[] = []
+        if (flipH) transforms.push("scaleX(-1)")
+        if (flipV) transforms.push("scaleY(-1)")
+        if (rotate) transforms.push(`rotate(${rotate}deg)`)
+        if (transforms.length) style += `transform: ${transforms.join(" ")};`
 
         let item: Item = {
             type: type2,
@@ -1017,8 +1028,10 @@ export class PowerPointPackage {
                     strokeMiterlimit = miterLim ? parseFloat(miterLim) : 4
                 }
             } else if (shape.name === "p:cxnSp") {
-                stroke = resolveColor(getValue(spPr, "a:ln", "a:schemeClr"), ctx.colors) || "#ffffff"
-                strokeWidth = 1
+                const lineClr = resolveColor(getValue(spPr, "a:ln", "a:solidFill"), ctx.colors) || resolveColor(getValue(spPr, "a:ln", "a:schemeClr"), ctx.colors)
+                stroke = lineClr || "#ffffff"
+                const lnW = getAttribute(spPr, "w", "a:ln") || getAttribute(getValue(spPr, "a:ln"), "w") || "0"
+                strokeWidth = lnW && lnW !== "0" ? Math.max(1, round((emuToPixels(lnW) || 1) * (ctx.scale?.factor ?? 1))) : 1
             }
 
             let svgAttributes = `fill="${fill}"`
@@ -1749,14 +1762,21 @@ function resolveColor(solidFill: any[], colors: { [key: string]: any }[], { lumM
     if (scheme) {
         let themeClr = getValue(colors, scheme)
         if (!themeClr.length) {
-            if (scheme === "a:tx1") {
-                themeClr = getValue(colors, "a:dk1")
-            }
+            if (scheme === "a:tx1") themeClr = getValue(colors, "a:dk1")
+            else if (scheme === "a:bg1") themeClr = getValue(colors, "a:lt1")
+            else if (scheme === "a:tx2") themeClr = getValue(colors, "a:dk2")
+            else if (scheme === "a:bg2") themeClr = getValue(colors, "a:lt2")
         }
 
         const lumMod = getAttribute(getValue(solidFill, "a:schemeClr"), "val", "a:lumMod")
         const lumOff = getAttribute(getValue(solidFill, "a:schemeClr"), "val", "a:lumOff")
-        const color = resolveColor(themeClr, colors, { lumMod, lumOff })
+        let color = resolveColor(themeClr, colors, { lumMod, lumOff })
+        if (!color) {
+            if (scheme === "a:bg1" || scheme === "a:lt1") color = "#ffffff"
+            else if (scheme === "a:tx1" || scheme === "a:dk1") color = "#000000"
+            else if (scheme === "a:bg2" || scheme === "a:lt2") color = "#e7e6e6"
+            else if (scheme === "a:tx2" || scheme === "a:dk2") color = "#44546a"
+        }
 
         const alpha = getAttribute(getValue(solidFill, "a:schemeClr"), "val", "a:alpha")
         if (alpha && color) {

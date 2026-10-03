@@ -61,6 +61,23 @@ function parseItemOpacity(style: string = ""): number {
 }
 
 /**
+ * Parse CSS transform (scaleX, scaleY, rotate) from an item style string.
+ */
+function parseItemTransform(style: string = ""): { scaleX: number; scaleY: number; rotate: number } {
+    const res = { scaleX: 1, scaleY: 1, rotate: 0 }
+    const match = style.match(/(?:^|;)\s*transform\s*:\s*([^;]+)/i)
+    if (!match) return res
+    const val = match[1]
+    const sx = val.match(/scaleX\(\s*(-?[\d.]+)\s*\)/i)
+    if (sx) res.scaleX = parseFloat(sx[1])
+    const sy = val.match(/scaleY\(\s*(-?[\d.]+)\s*\)/i)
+    if (sy) res.scaleY = parseFloat(sy[1])
+    const rot = val.match(/rotate\(\s*(-?[\d.]+)deg\s*\)/i)
+    if (rot) res.rotate = parseFloat(rot[1])
+    return res
+}
+
+/**
  * Extract normalized crop fractions (0..1) from item cropping configuration.
  */
 function getItemCrop(item: any): { left: number; top: number; right: number; bottom: number } {
@@ -95,17 +112,16 @@ async function drawItemsOntoContext(
 
     // 2. Iterate items in their natural z-order
     for (const item of items || []) {
-        // In bg-only mode, skip items that are NOT decoration/background layers.
-        // An item is a background layer when it either:
-        //  a) has item.decoration === true  (set by PowerPointHelper for master/layout shapes)
-        //  b) is a full-canvas media item that serves as the slide background image
-        //     (top:0, left:0, width:1920, height:1080 — added by PowerPointHelper for bgImage)
+        // In bg-only mode, only include MEDIA items (the full-canvas slide/master photo
+        // and master decoration pictures like watermarks/logos).
+        // Shapes (rounded rectangles, lines, icons) belong to the slide layer, NEVER
+        // baked into the common background image.
         if (bgItemsOnly) {
+            if (item.type !== "media") continue
             const isDecoration = !!item.decoration
             const pos = parseItemPosition(item)
             const isFullCanvas = pos.left === 0 && pos.top === 0 && pos.width >= 1900 && pos.height >= 1060
-            const isBgMedia = item.type === "media" && isFullCanvas
-            if (!isDecoration && !isBgMedia) continue
+            if (!isDecoration && !isFullCanvas) continue
         }
 
         if (item.type === "media" && item.src) {
@@ -134,9 +150,18 @@ async function drawItemsOntoContext(
 
             const pos = parseItemPosition(item)
             const opacity = parseItemOpacity(item.style)
+            const transform = parseItemTransform(item.style)
 
             ctx.save()
             if (opacity < 1) ctx.globalAlpha = opacity
+            if (transform.scaleX !== 1 || transform.scaleY !== 1 || transform.rotate !== 0) {
+                const cx = pos.left + pos.width / 2
+                const cy = pos.top + pos.height / 2
+                ctx.translate(cx, cy)
+                if (transform.scaleX !== 1 || transform.scaleY !== 1) ctx.scale(transform.scaleX, transform.scaleY)
+                if (transform.rotate !== 0) ctx.rotate((transform.rotate * Math.PI) / 180)
+                ctx.translate(-cx, -cy)
+            }
             ctx.drawImage(img, sx, sy, sWidth, sHeight, pos.left, pos.top, pos.width, pos.height)
             ctx.restore()
         } else if (item.type === "icon" && item.customSvg) {
@@ -146,8 +171,18 @@ async function drawItemsOntoContext(
             if (img) {
                 const pos = parseItemPosition(item)
                 const opacity = parseItemOpacity(item.style)
+                const transform = parseItemTransform(item.style)
+
                 ctx.save()
                 if (opacity < 1) ctx.globalAlpha = opacity
+                if (transform.scaleX !== 1 || transform.scaleY !== 1 || transform.rotate !== 0) {
+                    const cx = pos.left + pos.width / 2
+                    const cy = pos.top + pos.height / 2
+                    ctx.translate(cx, cy)
+                    if (transform.scaleX !== 1 || transform.scaleY !== 1) ctx.scale(transform.scaleX, transform.scaleY)
+                    if (transform.rotate !== 0) ctx.rotate((transform.rotate * Math.PI) / 180)
+                    ctx.translate(-cx, -cy)
+                }
                 ctx.drawImage(img, 0, 0, img.naturalWidth || pos.width, img.naturalHeight || pos.height, pos.left, pos.top, pos.width, pos.height)
                 ctx.restore()
             }

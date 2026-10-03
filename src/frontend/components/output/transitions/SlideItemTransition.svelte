@@ -97,12 +97,8 @@
             }
         }
 
-        // add some time in case an identical item is "fading" in
-        if (!outDelay && itemTransition?.duration === 0 && item.type === "media") outDelay = 250
-        // the previous fallback kept the old item visible a moment longer to avoid a black flash,
-        // but the autosize precompute path already keeps the new content ready, so we let the
-        // zero-duration case swap immediately to prevent overlapping text.
-        // WIP having outDelay on just 1 item will cause all other items to not clear until that is finished!
+        // If zero-duration / none transition, let the item swap immediately without delay to prevent overlapping with incoming content
+        // (Previously an artificial 250ms delay kept media items visible after text slides already appeared)
 
         // SET DELAY
 
