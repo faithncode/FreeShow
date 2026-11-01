@@ -47,6 +47,7 @@
     export let highlighedLines: { from: number; to: number; color: string }[] = []
     export let normalWrap = false
     export let updateDynamicValues = true
+    export let isScriptureContext = false
 
     $: lines = createVirtualBreaks(clone(item?.lines || []), outputStyle?.skipVirtualBreaks)
     $: if (linesStart !== null && linesEnd !== null && lines.length) {
@@ -356,11 +357,21 @@
 
     // $: isScripture = ref?.id === "scripture" || ref?.showId === "temp" || $showsCache[ref.showId || ""]?.reference?.type === "scripture"
 
+    // Per-display scripture verse vertical alignment override.
+    // When outputStyle.scriptureVerseAlign is set and this textbox belongs to a
+    // scripture context, replace the item's own align with the requested value.
+    $: effectiveAlign = (() => {
+        if (!isScriptureContext || !style) return style ? item?.align || "" : ""
+        const override = outputStyle?.scriptureVerseAlign
+        if (!override) return item?.align || ""
+        return override === "middle" ? "align-items: center;" : "align-items: flex-start;"
+    })()
+
     $: mainTextSegment = renderedLines?.flatMap((l) => l?.text || []).find((t) => !t?.customType?.includes("disableTemplate")) || renderedLines?.[0]?.text?.[0]
     $: baseFontSize = fontSize || (style ? resolveFontSize(mainTextSegment?.style, outputStyle) : 100)
 </script>
 
-<div class="align" class:hasShapeOutside={!!shapeOutside} class:hidden={hideContent} class:isStage class:scrolling={!isStage && item?.scrolling?.type} style="--scrollSpeed: {(item?.scrolling?.speed ?? 30) * 1.5}s;{style ? item?.align : null};" use:measureScroll={"align"}>
+<div class="align" class:hasShapeOutside={!!shapeOutside} class:hidden={hideContent} class:isStage class:scrolling={!isStage && item?.scrolling?.type} style="--scrollSpeed: {(item?.scrolling?.speed ?? 30) * 1.5}s;{effectiveAlign ? `${effectiveAlign};` : ''}" use:measureScroll={"align"}>
     <!-- scrolling lines -->
     {#if !isStage && item?.scrolling?.type && item?.scrolling?.type !== "none"}
         <div class="scrollWrapper" style="--copyCountHorizontal: {copyCountHorizontal};--copyCountVertical: {copyCountVertical};" class:topBottomContinuousScrolling={!isStage && item?.scrolling?.type === "top_bottom"} class:bottomTopContinuousScrolling={!isStage && item?.scrolling?.type === "bottom_top"} class:leftRightContinuousScrolling={!isStage && item?.scrolling?.type === "left_right"} class:rightLeftContinuousScrolling={!isStage && item?.scrolling?.type === "right_left"}>
@@ -371,7 +382,7 @@
                         class="lines"
                         class:hasShapeOutside={!!shapeOutside}
                         data-chord-size-ratio={chordFontSize ? chordFontSize / 100 : null}
-                        style="{style ? lineStyleBox : ''}{shapeOutside ? `--shape-outside: ${shapeOutside};` : ''}{shapeOutside && typeof item?.align === 'string' ? item.align.replace(/align-items/g, 'align-content') + ';' : ''}{smallFontSize || customFontSize !== null ? '--font-size: ' + (smallFontSize ? (-1.1 * $slidesOptions.columns + 10) * 5 : customFontSize) + 'px;' : ''}{textAnimation}{chordsStyle}"
+                        style="{style ? lineStyleBox : ''}{shapeOutside ? `--shape-outside: ${shapeOutside};` : ''}{shapeOutside && typeof effectiveAlign === 'string' ? effectiveAlign.replace(/align-items/g, 'align-content') : ''}{smallFontSize || customFontSize !== null ? '--font-size: ' + (smallFontSize ? (-1.1 * $slidesOptions.columns + 10) * 5 : customFontSize) + 'px;' : ''}{textAnimation}{chordsStyle}"
                     >
                         {#if shapeOutside}
                             <div class="shape-outside-float" style="shape-outside: {shapeOutside}; float: {shapeFloatSide};"></div>

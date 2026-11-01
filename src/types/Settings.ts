@@ -33,6 +33,7 @@ export interface Styles {
     templateScripture_2?: string
     templateScripture_3?: string
     templateScripture_4?: string
+    scriptureVerseAlign?: "top" | "middle"
     metadata?: Metadata
 }
 

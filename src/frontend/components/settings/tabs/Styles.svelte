@@ -198,6 +198,7 @@
             <MaterialButton title="titlebar.edit" icon="edit" on:click={() => editTemplate(templateOverrideScripture)} />
         {/if}
     </InputRow>
+    <MaterialToggleSwitch label="settings.scripture_verse_middle_align" checked={currentStyle.scriptureVerseAlign === "middle"} defaultValue={false} on:change={(e) => updateStyle(e.detail ? "middle" : undefined, "scriptureVerseAlign")} />
 {/if}
 
 <MaterialPopupButton id={styleId} label="meta.display_metadata" disabled={!activeLayers.includes("slide")} value={metadataDisplay} defaultValue="default" name={metadataDisplayLabel} popupId="metadata_display" icon="info" data={{ type: "style" }} on:change={(e) => updateStyle({ ...metadata, display: e.detail }, "metadata")} />

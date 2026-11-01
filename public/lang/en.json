@@ -1386,6 +1386,7 @@
         "all_lines": "All lines",
         "override_with_template": "Override slide with template",
         "override_scripture_with_template": "Override scripture with template",
+        "scripture_verse_middle_align": "Middle align verse text (this display only)",
         "overrided_value": "A template might override this value",
         "active_layers": "Active layers",
         "window": "Window",
