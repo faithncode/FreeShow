@@ -191,7 +191,11 @@
     let styleScriptureTemplateId = ""
     $: slideData = (() => {
         if (!ref?.showId) return null
-        const slideId = ref.slideId || ref.id
+        let slideId = ref.slideId || (ref.id !== "scripture" ? ref.id : "")
+        if (!slideId && ref.layoutId && $showsCache[ref.showId]?.layouts?.[ref.layoutId]) {
+            const layoutRef = _show(ref.showId).layouts([ref.layoutId]).ref()[0]
+            slideId = layoutRef?.[slideIndex]?.id || ""
+        }
         if (!slideId) return null
         return ($showsCache[ref.showId]?.slides?.[slideId] as Slide) || null
     })()
@@ -211,7 +215,10 @@
     // scripture slides can come from drawer preview or a stored show reference
     $: isScriptureContext = (() => {
         if (ref?.id === "scripture" || ref?.showId === "temp") return true
-        return (showReference?.type || "") === "scripture"
+        if ((showReference?.type || "") === "scripture") return true
+        if (slideData?.globalGroup === "scripture") return true
+        if (slideData?.customDynamicValues && Object.keys(slideData.customDynamicValues).some((k) => k.startsWith("scripture"))) return true
+        return false
     })()
     // translation count dictates which style-specific template should apply
     $: scriptureTranslationKey = isScriptureContext ? buildScriptureTranslationKey(showReference) : ""
@@ -838,79 +845,38 @@
     on:mouseup={release}
 >
     {#if lines && !noTextMode}
-        {#if textTransition}
-            <div class="textTransitionContainer">
-                {#key `${textTransition.show}-${textTransition.renderVersion}-${itemIndex}`}
-                    {#if textTransition.show}
-                        <SlideItemTransition {preview} transitionEnabled={textTransition.transitionEnabled} transitioningBetween={textTransition.transitioningBetween} isClearing={textTransition.isClearing} incomingNeedsAutoSize={textTransition.incomingNeedsAutoSize} globalTransition={textTransition.globalTransition} item={{ ...item, autoFontSize: hasAutoSize ? fontSize || item?.autoFontSize : 0 }} lines={textTransition.lines} let:customItem let:customLines>
-                            <TextboxLines
-                                item={customItem}
-                                {slideIndex}
-                                {key}
-                                {smallFontSize}
-                                {animationStyle}
-                                {dynamicValues}
-                                {isStage}
-                                {customFontSize}
-                                {outputStyle}
-                                {ref}
-                                {style}
-                                {customStyle}
-                                {stageItem}
-                                chords={customItem.chords?.enabled ?? chords}
-                                linesStart={customLines?.[textTransition.currentLineId || ""]?.[customItem.lineReveal ? "linesStart" : "start"]}
-                                linesEnd={customLines?.[textTransition.currentLineId || ""]?.[customItem.lineReveal ? "linesEnd" : "end"]}
-                                fontSize={smallFontSize ? 20 : isStage || hasAutoSize ? customItem.autoFontSize || fontSize : 0}
-                                {customTypeRatio}
-                                {maxLines}
-                                {maxLinesInvert}
-                                {centerPreview}
-                                {revealed}
-                                styleOverrides={templateStyleOverrides}
-                                {useOriginalTextColor}
-                                hideContent={hideUntilAutosized}
-                                {normalWrap}
-                                {highlighedLines}
-                                on:updateAutoSize={calculateAutosize}
-                                {updateDynamicValues}
-                            />
-                        </SlideItemTransition>
-                    {/if}
-                {/key}
-            </div>
-        {:else}
-            <TextboxLines
-                {item}
-                {slideIndex}
-                {key}
-                {smallFontSize}
-                {animationStyle}
-                {dynamicValues}
-                {isStage}
-                {customFontSize}
-                {outputStyle}
-                {ref}
-                {style}
-                {customStyle}
-                {stageItem}
-                {chords}
-                {linesStart}
-                {linesEnd}
-                fontSize={smallFontSize ? 20 : isStage || hasAutoSize ? fontSize : 0}
-                {customTypeRatio}
-                {maxLines}
-                {maxLinesInvert}
-                {centerPreview}
-                {revealed}
-                styleOverrides={templateStyleOverrides}
-                {useOriginalTextColor}
-                hideContent={hideUntilAutosized}
-                {normalWrap}
-                {highlighedLines}
-                on:updateAutoSize={calculateAutosize}
-                {updateDynamicValues}
-            />
-        {/if}
+        <TextboxLines
+            {item}
+            {slideIndex}
+            {key}
+            {smallFontSize}
+            {animationStyle}
+            {dynamicValues}
+            {isStage}
+            {customFontSize}
+            {outputStyle}
+            {ref}
+            {style}
+            {customStyle}
+            {stageItem}
+            {chords}
+            {linesStart}
+            {linesEnd}
+            fontSize={smallFontSize ? 20 : fontSize}
+            {customTypeRatio}
+            {maxLines}
+            {maxLinesInvert}
+            {centerPreview}
+            {revealed}
+            styleOverrides={templateStyleOverrides}
+            {useOriginalTextColor}
+            hideContent={hideUntilAutosized}
+            {normalWrap}
+            {highlighedLines}
+            on:updateAutoSize={calculateAutosize}
+            {updateDynamicValues}
+            {isScriptureContext}
+        />
     {:else}
         <SlideItems {item} {slideIndex} {preview} miniPreview={miniPreview || centerPreview} {isTemplatePreview} {ratio} {smallFontSize} {ref} {fontSize} {outputId} />
     {/if}
