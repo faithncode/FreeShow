@@ -143,6 +143,21 @@ export const currentOutputSettings: Writable<string | null> = writable(null)
 export const slideTimers: Writable<{ [key: string]: SlideTimer }> = writable({})
 export const outputCache: Writable<any> = writable(null)
 export const outputSlideCache: Writable<any> = writable({})
+export const stagePeekStanza: Writable<{
+    groupId?: string
+    layoutIndex?: number
+    until: number
+    slideIndexAtPeek?: number
+    key?: string
+} | null> = writable(null)
+export const singerAlert: Writable<{
+    stanza: string
+    key?: string
+    timestamp: number
+    until: number
+} | null> = writable(null)
+export const showStanzaMenu: Writable<boolean> = writable(false)
+export const previewBuffers: Writable<any> = writable({})
 export const ndiData: Writable<any> = writable({})
 export const omtData: Writable<any> = writable({})
 export const closeAd: Writable<boolean> = writable(false)
@@ -490,6 +505,8 @@ export const $ = {
     events,
     drawSettings,
     stageShows,
+    stagePeekStanza,
+    showStanzaMenu,
     scriptures,
     scripturesCache,
     scriptureSettings,

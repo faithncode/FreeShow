@@ -4,15 +4,21 @@
     import Icon from "../common/components/Icon.svelte"
     import { requestWakeLock } from "../common/util/wakeLock"
     import Slide from "./components/Slide.svelte"
+    import StanzaNumpad from "./components/StanzaNumpad.svelte"
+    import StageGuidePanel from "./components/StageGuidePanel.svelte"
+    import NumpadController from "./components/NumpadController.svelte"
     import TtsSettings from "./components/TtsSettings.svelte"
     import { openLayout, translate } from "./util/helpers"
     import { initSocket } from "./util/socket"
-    import { _set, dictionary, errors, layouts, output, passwordRequiredLayout, selectedLayout, stageLayout } from "./util/stores"
+    import { _set, dictionary, errors, layouts, output, passwordRequiredLayout, selectedLayout, showStanzaMenu, stageLayout } from "./util/stores"
     import { getCurrentSlideText, speakText, stopSpeech } from "./util/tts"
 
     initSocket()
 
     const freeshowLogo = new URL("../../../public/import-logos/freeshow.webp", import.meta.url).href
+
+    const urlParams = new URLSearchParams(window.location.search)
+    const isNumpadMode = urlParams.has("numpad") || urlParams.has("singer")
 
     let inputPassword: string = ""
 
@@ -32,6 +38,7 @@
 
     let clicked: boolean = false
     const click = (e: any) => {
+        if (isNumpadMode) return
         if (e.target.closest(".clicked")) return
 
         // wait for actions to maybe open
@@ -115,15 +122,58 @@
 
 <svelte:window on:click={click} />
 
-{#if $errors.length && !$passwordRequiredLayout}
-    <div class="error">
-        {#each $errors as error}
-            <span>{error}</span>
-        {/each}
-    </div>
-{/if}
+{#if isNumpadMode}
+    {#if $passwordRequiredLayout}
+        <div class="auth-page">
+            <div class="panel">
+                <div class="brand">
+                    <h1>{$passwordRequiredLayout.name || "StageShow"}</h1>
+                </div>
 
-{#if $passwordRequiredLayout}
+                <form on:submit|preventDefault={submitPassword} class="auth-form">
+                    {#if $errors.length}
+                        <div class="auth-error">
+                            {#each $errors as error}
+                                <span>{error}</span>
+                            {/each}
+                        </div>
+                    {/if}
+
+                    <div class="field-group">
+                        <div class="field">
+                            <span class="icon" aria-hidden="true">
+                                <Icon id="locked" size={1.1} white />
+                            </span>
+                            <input id="password-input" class="input" type="password" name="password" autocomplete="current-password" placeholder={translate("remote.password", $dictionary, "Password")} bind:value={inputPassword} autofocus />
+                        </div>
+                    </div>
+
+                    <div class="actions">
+                        <div style="display: flex; gap: 10px; width: 100%; justify-content: flex-end;">
+                            <button type="button" class="cancel-button" on:click={cancelPassword} style="flex: 1;">
+                                {translate("actions.cancel", $dictionary, "Cancel")}
+                            </button>
+                            <button type="submit" class="submit-button" disabled={!inputPassword.trim()} style="flex: 1;">
+                                {translate("remote.submit", $dictionary, "Submit")}
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    {:else}
+        <NumpadController />
+    {/if}
+{:else}
+    {#if $errors.length && !$passwordRequiredLayout}
+        <div class="error">
+            {#each $errors as error}
+                <span>{error}</span>
+            {/each}
+        </div>
+    {/if}
+
+    {#if $passwordRequiredLayout}
     <div class="auth-page">
         <div class="panel">
             <div class="brand">
@@ -208,28 +258,39 @@
         </div>
     {/if}
 {:else if $stageLayout}
-    <Slide />
+    <div class="stage-layout" class:guide-open={$showStanzaMenu}>
+        <div class="slide-area">
+            <Slide />
 
-    {#if showTtsSettings}
-        <TtsSettings on:close={() => (showTtsSettings = false)} />
-    {/if}
+            {#if showTtsSettings}
+                <TtsSettings on:close={() => (showTtsSettings = false)} />
+            {/if}
 
-    {#if clicked}
-        <div class="clicked">
-            <h5 style="text-align: center;">{$stageLayout.name || "—"}</h5>
-            <div style="display: flex;gap: 10px;">
-                <Button on:click={goHome} style="flex: 1;" center>
-                    <Icon id="home" />
-                </Button>
-                <Button on:click={toggleTts} center class={ttsEnabled ? "active" : ""}>
-                    <Icon id={ttsEnabled ? "volume" : "muted"} />
-                </Button>
-                <Button on:click={toggleFullscreen} center>
-                    <Icon id={isFullscreen ? "exitFullscreen" : "fullscreen"} />
-                </Button>
-            </div>
+            {#if clicked}
+                <div class="clicked">
+                    <h5 style="text-align: center;">{$stageLayout.name || "—"}</h5>
+                    <div style="display: flex;gap: 10px;">
+                        <Button on:click={goHome} style="flex: 1;" center>
+                            <Icon id="home" />
+                        </Button>
+                        <Button on:click={toggleTts} center class={ttsEnabled ? "active" : ""}>
+                            <Icon id={ttsEnabled ? "volume" : "muted"} />
+                        </Button>
+                        <Button on:click={toggleFullscreen} center>
+                            <Icon id={isFullscreen ? "exitFullscreen" : "fullscreen"} />
+                        </Button>
+                    </div>
+                </div>
+            {/if}
         </div>
-    {/if}
+
+        {#if $showStanzaMenu}
+            <div class="guide-area">
+                <StageGuidePanel />
+            </div>
+        {/if}
+    </div>
+{/if}
 {/if}
 
 <style>
@@ -285,6 +346,48 @@
 
         /* --navigation-width: 18vw; */
         --navigation-width: 300px;
+    }
+
+    /* Stage layout split (normal vs guide-open) */
+    .stage-layout {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: row;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        transition: all 0.25s ease;
+    }
+
+    .slide-area {
+        position: relative;
+        flex: 1 1 100%;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        transition: all 0.25s ease;
+    }
+
+    .stage-layout.guide-open .slide-area {
+        flex: 0 0 80%;
+        width: 80%;
+        max-width: 80%;
+    }
+
+    .guide-area {
+        flex: 0 0 20%;
+        width: 20%;
+        max-width: 20%;
+        height: 100%;
+        min-width: 0;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: #0d0d12;
+        border-left: 2px solid rgba(255, 215, 0, 0.35);
+        box-shadow: -6px 0 20px rgba(0, 0, 0, 0.5);
     }
 
     .error {
