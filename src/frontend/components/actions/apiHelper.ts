@@ -1,14 +1,14 @@
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist"
 import { get } from "svelte/store"
-import { STAGE } from "../../../types/Channels"
+import { OUTPUT, STAGE } from "../../../types/Channels"
 import type { History } from "../../../types/History"
 import type { DropData, Selected, Variable } from "../../../types/Main"
 import { isChannelRecording, startChannelRecording, stopAllChannelRecordings, stopChannelRecording, toggleChannelRecording } from "../../audio/audioChannelRecorder"
 import { clearAudio } from "../../audio/audioFading"
 import { AudioPlayer } from "../../audio/audioPlayer"
 import { AudioPlaylist } from "../../audio/audioPlaylist"
-import { activeDrawerTab, activeEdit, activePage, activeProject, activeShow, activeTimers, audioChannelsData, audioPlaylists, audioRouting, draw, drawSettings, drawTool, folders, groupNumbers, groups, media, openScripture, outLocked, outputs, overlays, pdfImports, playingAudio, playingMetronome, projects, refreshEditSlide, selected, shows, showsCache, sortedShowsList, special, styles, timers, variables } from "../../stores"
-import { newToast } from "../../utils/common"
+import { activeDrawerTab, activeEdit, activePage, activeProject, activeShow, activeTimers, allOutputs, audioChannelsData, audioPlaylists, audioRouting, draw, drawSettings, drawTool, folders, groupNumbers, groups, media, openScripture, outLocked, outputs, overlays, pdfImports, playingAudio, playingMetronome, projects, refreshEditSlide, selected, shows, showsCache, showStanzaMenu, singerAlert, sortedShowsList, special, stagePeekStanza, styles, timers, variables } from "../../stores"
+import { isOutputWindow, newToast } from "../../utils/common"
 import { send } from "../../utils/request"
 import { parseEngScriptureRefToNumbers, resolveScriptureReference } from "../drawer/bible/scripture"
 import { getDynamicValue } from "../edit/scripts/itemHelpers"
@@ -86,6 +86,162 @@ export function gotoGroup(dataGroupId: string) {
     })
 
     playNextGroup(globalGroupIds, { showRef, outSlide, currentShowId })
+}
+
+const VERSE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "["]
+
+export function findStanzaIndexByKey(key: string, currentShowId: string, showRef: any[]): number {
+    const lk = (key || "").toLowerCase().trim()
+    if (!lk) return -1
+    const show = get(showsCache)[currentShowId] || _show(currentShowId).get()
+    if (!show?.slides) return -1
+
+    let normalizedKey = lk
+    const asNum = parseInt(lk)
+    if (!isNaN(asNum) && asNum >= 1 && asNum <= 11) {
+        normalizedKey = VERSE_KEYS[asNum - 1] || lk
+    } else if (lk === "chorus") {
+        normalizedKey = "a"
+    } else if (lk === "intro") {
+        normalizedKey = "s"
+    } else if (lk === "bridge") {
+        normalizedKey = "b"
+    }
+
+    // 1. Direct match on slide shortcut
+    for (let i = 0; i < showRef.length; i++) {
+        const ref = showRef[i]
+        const slide = show.slides[ref.id]
+        const explicitKey = (ref.data?.actions?.slide_shortcut?.key || slide?.actions?.slide_shortcut?.key || "").toLowerCase().trim()
+        if (explicitKey && (explicitKey === normalizedKey || explicitKey === lk)) return i
+    }
+
+    // 2. Derive from group name
+    let verseCount = 0
+    const seenParents = new Set<string>()
+
+    for (let i = 0; i < showRef.length; i++) {
+        const ref = showRef[i]
+        const gId = ref.type === "child" ? ref.parent?.id : ref.id
+        if (!gId || seenParents.has(gId)) continue
+        seenParents.add(gId)
+
+        const slide = show.slides[gId]
+        const rawName = (slide?.group || "").toLowerCase().trim()
+        let derivedKey = ""
+
+        if (rawName.startsWith("chorus") || rawName === "c" || rawName.includes("pallavi")) derivedKey = "a"
+        else if (rawName.startsWith("intro") || rawName === "i") derivedKey = "s"
+        else if (rawName.startsWith("bridge") || rawName === "b" || rawName.includes("anupallavi")) derivedKey = "b"
+        else {
+            const match = rawName.match(/(?:verse|stanza|saranam|charanam)\s*(\d+)/i)
+            if (match) {
+                const num = parseInt(match[1])
+                derivedKey = VERSE_KEYS[num - 1] || VERSE_KEYS[VERSE_KEYS.length - 1]
+            } else {
+                verseCount++
+                derivedKey = VERSE_KEYS[verseCount - 1] || VERSE_KEYS[VERSE_KEYS.length - 1]
+            }
+        }
+
+        if (derivedKey === normalizedKey || derivedKey === lk) return i
+    }
+
+    return -1
+}
+
+export function peekStanzaAction(data: { key?: string; index?: number; layoutIndex?: number; groupId?: string; until?: number }) {
+    const outputStores = isOutputWindow() ? get(allOutputs) : get(outputs)
+    const activeIds = getActiveOutputs(outputStores, false, true, true)
+    const currentOutput =
+        outputStores[activeIds[0]] ||
+        Object.values(outputStores).find((o) => !o.stageOutput && o.out?.slide?.id && o.out.slide.id !== "temp") ||
+        Object.values(outputStores).find((o) => o.out?.slide?.id && o.out.slide.id !== "temp") ||
+        getFirstActiveOutput() ||
+        {}
+    const outSlide = currentOutput?.out?.slide
+    const currentShowId = outSlide?.id || (get(activeShow) !== null ? (get(activeShow)!.type === undefined || get(activeShow)!.type === "show" ? get(activeShow)!.id : null) : null)
+    if (!currentShowId) return
+
+    const showRef = getLayoutRef(currentShowId)
+    let targetIndex = data.index ?? data.layoutIndex ?? -1
+
+    if (targetIndex < 0 && data.key) {
+        targetIndex = findStanzaIndexByKey(data.key, currentShowId, showRef)
+    }
+
+    if (targetIndex >= 0 && targetIndex < showRef.length) {
+        const ref = showRef[targetIndex]
+        const groupId = data.groupId || (ref ? (ref.type === "child" ? ref.parent?.id : ref.id) : undefined)
+        const show = get(showsCache)[currentShowId] || _show(currentShowId).get()
+        const rawGroupName = groupId && show?.slides?.[groupId]?.group
+        const stanzaLabel = rawGroupName ? rawGroupName.trim() : (data.key ? `Key ${data.key.toUpperCase()}` : `Slide ${targetIndex + 1}`)
+        const untilTime = data.until || (Date.now() + 7000)
+
+        // Eye-catching top-right alert for the lyrics operator
+        singerAlert.set({
+            stanza: stanzaLabel,
+            key: data.key,
+            timestamp: Date.now(),
+            until: untilTime
+        })
+
+        // Standard toast fallback
+        newToast(`🎤 Singer Key: ${data.key ? data.key.toUpperCase() : stanzaLabel}`)
+
+        const payload = {
+            layoutIndex: targetIndex,
+            groupId,
+            key: data.key,
+            until: untilTime,
+            slideIndexAtPeek: outSlide?.index
+        }
+        stagePeekStanza.set(payload)
+        send(STAGE, ["PEEK_STANZA"], payload)
+        send(OUTPUT, ["STAGE_PEEK_STANZA"], payload)
+    } else if (data.key) {
+        singerAlert.set({
+            stanza: data.key.toUpperCase(),
+            key: data.key,
+            timestamp: Date.now(),
+            until: Date.now() + 7000
+        })
+        newToast(`🎤 Singer requested: ${data.key.toUpperCase()}`)
+
+        const payload = {
+            key: data.key,
+            until: Date.now() + 7000
+        }
+        stagePeekStanza.set(payload)
+        send(STAGE, ["PEEK_STANZA"], payload)
+        send(OUTPUT, ["STAGE_PEEK_STANZA"], payload)
+    }
+}
+
+export function jumpStanzaAction(data: { key?: string; index?: number }) {
+    const currentOutput = getFirstActiveOutput()
+    const outSlide = currentOutput?.out?.slide
+    const currentShowId = outSlide?.id || (get(activeShow) !== null ? (get(activeShow)!.type === undefined || get(activeShow)!.type === "show" ? get(activeShow)!.id : null) : null)
+    if (!currentShowId) return
+
+    const showRef = getLayoutRef(currentShowId)
+    let targetIndex = data.index ?? -1
+
+    if (targetIndex < 0 && data.key) {
+        targetIndex = findStanzaIndexByKey(data.key, currentShowId, showRef)
+    }
+
+    if (targetIndex >= 0 && targetIndex < showRef.length) {
+        selectSlideByIndex({ index: targetIndex })
+        peekStanzaAction({ index: targetIndex, key: data.key })
+    }
+}
+
+export function toggleStageMenuAction(open?: boolean) {
+    const nextState = typeof open === "boolean" ? open : !get(showStanzaMenu)
+    showStanzaMenu.set(nextState)
+    send(STAGE, ["MENU_TOGGLE"], { open: nextState })
+    send(OUTPUT, ["STAGE_SHOW_MENU"], nextState)
 }
 
 export function selectProjectById(id: string) {

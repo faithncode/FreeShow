@@ -518,6 +518,8 @@ const initalOutputData = {
 
     PLAYER_VIDEOS: "playerVideos",
     STAGE: "stageShows",
+    STAGE_PEEK_STANZA: "stagePeekStanza",
+    STAGE_SHOW_MENU: "showStanzaMenu",
 
     // for dynamic values
     PROJECTS: "projects",

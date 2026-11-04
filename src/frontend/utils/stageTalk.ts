@@ -1,7 +1,8 @@
 import { get } from "svelte/store"
-import { STAGE } from "../../types/Channels"
+import { OUTPUT, STAGE } from "../../types/Channels"
 import type { OutSlide } from "../../types/Show"
 import { runAction } from "../components/actions/actions"
+import { jumpStanzaAction, peekStanzaAction } from "../components/actions/apiHelper"
 import { clone, keysToID } from "../components/helpers/array"
 import { getBase64Path } from "../components/helpers/media"
 import { checkWindowCapture, getFirstOutput } from "../components/helpers/output"
@@ -9,7 +10,7 @@ import { getCurrentProjectIndexes, getProjectItems } from "../components/helpers
 import { getGroupName, getLayoutRef } from "../components/helpers/show"
 import { _show } from "../components/helpers/shows"
 import { getCustomStageLabel } from "../components/stage/stage"
-import { actions, activeProject, activeShow, events, groups, media, metronome, metronomeTimer, outputs, projects, showsCache, stageShows, timeFormat, timers, variables } from "../stores"
+import { actions, activeProject, activeShow, events, groups, media, metronome, metronomeTimer, outputs, projects, showsCache, showStanzaMenu, stageShows, timeFormat, timers, variables } from "../stores"
 import { connections } from "./../stores"
 import { translateText } from "./language"
 import { send } from "./request"
@@ -219,6 +220,29 @@ export const receiveSTAGE = {
         if (hasPassword && !stageId) return
 
         runAction(get(actions)[a.id], { source: "remote" })
+    },
+
+    STAGE_JUMP: (data: { index?: number; key?: string; groupId?: string }, connectionId: string) => {
+        const stageId = get(connections).STAGE?.[connectionId]?.active
+        const hasPassword = Object.values(get(stageShows) || {}).some((s: any) => s?.password)
+        if (hasPassword && !stageId) return
+
+        if (data?.index !== undefined && data.index !== null) {
+            jumpStanzaAction({ index: data.index, key: data.key })
+        } else if (data?.key) {
+            jumpStanzaAction({ key: data.key })
+        }
+    },
+
+    PEEK_STANZA: (data: any) => {
+        peekStanzaAction(data)
+    },
+
+    MENU_TOGGLE: (data: any) => {
+        const nextState = typeof data?.open === "boolean" ? data.open : !get(showStanzaMenu)
+        showStanzaMenu.set(nextState)
+        send(STAGE, ["MENU_TOGGLE"], { open: nextState })
+        send(OUTPUT, ["STAGE_SHOW_MENU"], nextState)
     }
 
     // case "SHOW":

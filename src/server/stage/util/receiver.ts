@@ -3,7 +3,7 @@ import type { Show } from "../../../types/Show"
 import type { StageLayout } from "../../../types/Stage"
 import { lastAttemptedLayoutId, lastAttemptedPassword, openLayout, setError, translate } from "./helpers"
 import { send } from "./socket"
-import { _, _get, _set, _update, activeTimers, events, metronome, metronomeTimer, outputSlideCache, progressData, stream, timeFormat, timers, variables } from "./stores"
+import { _, _get, _set, _update, activeTimers, events, metronome, metronomeTimer, outputSlideCache, peekStanza, progressData, showStanzaMenu, stream, timeFormat, timers, variables } from "./stores"
 
 export type ReceiverKey = keyof typeof receiver
 export const receiver = {
@@ -13,6 +13,7 @@ export const receiver = {
 
         const urlParams = new URLSearchParams(window.location.search)
         const pwdQuery = urlParams.get("password") || ""
+        const isNumpad = urlParams.has("numpad") || urlParams.has("singer")
 
         if (data.length === 1) {
             openLayout(data[0].id, pwdQuery)
@@ -37,6 +38,12 @@ export const receiver = {
         const storedValue = localStorage.getItem("selectedLayout") || localStorage.getItem("show")
         if (storedValue) {
             openLayout(storedValue, pwdQuery)
+            return
+        }
+
+        if (isNumpad && data.length) {
+            const firstNonPwd = data.find((a) => !a.password) || data[0]
+            openLayout(firstNonPwd.id, pwdQuery)
             return
         }
     },
@@ -84,6 +91,8 @@ export const receiver = {
     METRONOME: (data: any) => metronome.set(data),
     METRONOME_TIMER: (data: any) => metronomeTimer.set(data),
     REQUEST_PROGRESS: (data: any) => progressData.set(data),
+    PEEK_STANZA: (data: any) => peekStanza.set(data),
+    MENU_TOGGLE: (data: any) => showStanzaMenu.update((v) => (typeof data?.open === "boolean" ? data.open : !v)),
     DATA: (data: any) => {
         if (data.timeFormat) timeFormat.set(data.timeFormat)
     },

@@ -48,6 +48,8 @@ import {
     getShowGroups,
     getTimersDetailed,
     gotoGroup,
+    jumpStanzaAction,
+    peekStanzaAction,
     moveStageConnection,
     pauseAudio,
     pauseTimerById,
@@ -85,6 +87,7 @@ import {
     toggleLogSongUsage,
     toggleMediaLoop,
     toggleMediaMute,
+    toggleStageMenuAction,
     updateVolumeValues,
     videoSeekTo
 } from "./apiHelper"
@@ -241,6 +244,9 @@ export const API_ACTIONS = {
     index_select_slide: (data: API_slide_index) => selectSlideByIndex(data), // BC
     name_select_slide: (data: API_strval) => selectSlideByName(data.value), // BC
     id_select_group: (data: API_id) => gotoGroup(data.id), // BC
+    peek_stanza: (data: { key?: string; index?: number }) => peekStanzaAction(data),
+    jump_stanza: (data: { key?: string; index?: number }) => jumpStanzaAction(data),
+    toggle_stage_menu: (data: { open?: boolean } = {}) => toggleStageMenuAction(data?.open),
     disable_slide: (data: API_disable_slide) => disableSlide(data),
 
     // CLEAR

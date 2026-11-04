@@ -15,6 +15,7 @@
     import Recorder from "./components/main/Recorder.svelte"
     import StatusIndicator from "./components/main/StatusIndicator.svelte"
     import Toast from "./components/main/Toast.svelte"
+    import SingerAlert from "./components/main/SingerAlert.svelte"
     import TooltipManager from "./components/main/TooltipManager.svelte"
     import QuickSearch from "./components/quicksearch/QuickSearch.svelte"
     import Center from "./components/system/Center.svelte"
@@ -84,6 +85,7 @@
             <Popup />
             <QuickSearch />
             <Toast />
+            <SingerAlert />
             <StatusIndicator />
             <Recorder />
             <Guide />

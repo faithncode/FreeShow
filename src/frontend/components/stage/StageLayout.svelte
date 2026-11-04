@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onDestroy, setContext } from "svelte"
-    import { activePage, activeStage, allOutputs, currentOutputSettings, outputs, settingsTab, stageShows, toggleOutputEnabled } from "../../stores"
+    import { activePage, activeStage, allOutputs, currentOutputSettings, outputs, settingsTab, showStanzaMenu, stageShows, toggleOutputEnabled } from "../../stores"
     import { getAccess } from "../../utils/profile"
     import ItemAddMenu from "../edit/ItemAddMenu.svelte"
     import { getSortedStageItems, shouldItemBeShown } from "../edit/scripts/itemHelpers"
@@ -19,6 +19,7 @@
     import Snaplines from "../system/Snaplines.svelte"
     import { getSlideTextItems, stageItemToItem, updateStageShow } from "./stage"
     import Stagebox from "./Stagebox.svelte"
+    import StageGuidePanel from "./StageGuidePanel.svelte"
 
     export let outputId = ""
     export let stageId = ""
@@ -115,6 +116,12 @@
 
     $: stageItems = getSortedStageItems(stageLayoutId, $stageShows)
 
+    $: stageLineFilter = (() => {
+        if (!stageItems) return "both"
+        const slideTextItem = stageItems.find((it: any) => it.type === "slide_text")
+        return slideTextItem?.lineFilter || "both"
+    })()
+
     let conditionsUpdater = 0
     const updaterInterval = setInterval(() => {
         if (!Array.isArray(stageItems)) return
@@ -143,7 +150,7 @@
     }
 </script>
 
-<div class="stageArea">
+<div class="stageArea" class:guide-open={!edit && $showStanzaMenu}>
     <!-- <Main slide={stageShowId ? show : null} let:width let:height let:resolution> -->
     <div class="parent" class:noOverflow={zoom >= 1} bind:this={scrollElem} bind:offsetWidth={width} bind:offsetHeight={height}>
         {#if stageLayoutId}
@@ -167,6 +174,12 @@
             </Center>
         {/if}
     </div>
+
+    {#if !edit && $showStanzaMenu}
+        <div class="guide-panel-container">
+            <StageGuidePanel sourceOutputId={layout?.settings?.output || ""} lineFilter={stageLineFilter} />
+        </div>
+    {/if}
     <!-- </Main> -->
 
     <!-- <div class="bar">
@@ -193,7 +206,7 @@
         width: 100%;
         height: 100%;
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
         position: relative;
         overflow: hidden;
     }
@@ -201,11 +214,31 @@
     .parent {
         width: 100%;
         height: 100%;
+        flex: 1 1 100%;
         display: flex;
         justify-content: center;
         align-items: center;
         /* padding: 10px; */
         overflow: auto;
+        transition: width 0.25s ease, flex 0.25s ease;
+    }
+
+    .stageArea.guide-open .parent {
+        flex: 0 0 80%;
+        width: 80%;
+        max-width: 80%;
+    }
+
+    .guide-panel-container {
+        flex: 0 0 20%;
+        width: 20%;
+        max-width: 20%;
+        height: 100%;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        z-index: 10;
     }
 
     .parent.noOverflow {

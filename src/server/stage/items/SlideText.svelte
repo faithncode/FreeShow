@@ -7,7 +7,7 @@
     import Zoomed from "../components/Zoomed.svelte"
     import { getLayoutRef } from "../helpers/show"
     import { getItemText } from "../helpers/textStyle"
-    import { showsCache } from "../util/stores"
+    import { showsCache, peekStanza } from "../util/stores"
 
     export let currentSlide: OutSlide
     export let slideOffset: number = 0
@@ -59,6 +59,47 @@
 
     $: targetIndex = customOffset !== null ? customOffset : slideIndex
 
+    // ── 7-Second Stanza Peek / Lock ──────────────────────────────────────────
+    // When singer triggers a stanza (from numpad, phone, API):
+    // Display that stanza's lines for the full 7 seconds minimum.
+    // Operator slide changes do NOT dismiss it early (leader needs the lines
+    // while choir/audience finish singing). Only after the 7s expires does it
+    // revert and attend to the live slide progression.
+    let activePeek: { groupId?: string; layoutIndex?: number; until: number } | null = null
+    let peekTimer: any = null
+
+    $: {
+        if ($peekStanza) {
+            activePeek = $peekStanza
+            if (peekTimer) clearTimeout(peekTimer)
+            peekTimer = setTimeout(() => {
+                activePeek = null
+                peekStanza.set(null)
+            }, 7000)
+        } else {
+            activePeek = null
+            if (peekTimer) clearTimeout(peekTimer)
+        }
+    }
+
+    $: isPeeking = activePeek !== null
+    $: effectiveTargetIndex = isPeeking && activePeek?.layoutIndex !== undefined ? activePeek.layoutIndex : targetIndex
+
+    // groupRefs: used for showGroupLines (current-slide merged view) or active peek
+    $: effectiveGroupRefs = (stageItem?.showGroupLines || isPeeking) && effectiveTargetIndex !== null && showRef && showRef[effectiveTargetIndex]
+        ? getGroupRefs(showRef, effectiveTargetIndex)
+        : []
+
+    $: effectiveSlideId = isPeeking && effectiveTargetIndex !== null && showRef
+        ? showRef[effectiveTargetIndex]?.id || null
+        : slideId
+
+    $: effectiveSlide = isPeeking && effectiveSlideId
+        ? clone($showsCache[currentSlide?.id]?.slides?.[effectiveSlideId] || slide)
+        : slide
+
+    $: effectiveReversedItems = !itemNumber && stageItem?.invertItems ? clone(effectiveSlide?.items || []) : clone(effectiveSlide?.items || []).reverse()
+
     // groupRefs: only used for showGroupLines (current-slide merged view)
     $: groupRefs = stageItem?.showGroupLines && targetIndex !== null && showRef && showRef[targetIndex] ? getGroupRefs(showRef, targetIndex) : []
 
@@ -96,11 +137,15 @@
     // ── items ────────────────────────────────────────────────────────────
     $: items = stageItem?.showNextUnseen
         ? getNextUnseenItems(showRef, seenGroupIds, targetIndex, langFilter)
-        : groupRefs.length && !isSingleGroupShow(showRef)
-            ? getGroupSlideItems(groupRefs, slideId, targetIndex, langFilter)
-            : style
-                ? filterItemsLanguage(clone(slide?.items || []), langFilter)
-                : combineSlideItems(reversedItems, langFilter)
+        : isPeeking
+            ? effectiveGroupRefs.length && !isSingleGroupShow(showRef)
+                ? getGroupSlideItems(effectiveGroupRefs, effectiveSlideId, effectiveTargetIndex, langFilter)
+                : combineSlideItems(effectiveReversedItems, langFilter)
+            : groupRefs.length && !isSingleGroupShow(showRef)
+                ? getGroupSlideItems(groupRefs, slideId, targetIndex, langFilter)
+                : style
+                    ? filterItemsLanguage(clone(slide?.items || []), langFilter)
+                    : combineSlideItems(reversedItems, langFilter)
 
     // ── Language filter helpers ──────────────────────────────────────────────
     function containsTamil(text: string): boolean {

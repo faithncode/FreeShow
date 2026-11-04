@@ -52,8 +52,10 @@ import {
     projects,
     shows,
     showsCache,
+    showStanzaMenu,
     slideTimelineSpeedMultiplier,
     special,
+    stagePeekStanza,
     stageShows,
     styles,
     templates,
@@ -281,6 +283,8 @@ export const receiveOUTPUTasOUTPUT: any = {
     // POSITION: (a: any) => outputPosition.set(a),
     PLAYER_VIDEOS: (a: any) => playerVideos.set(a),
     STAGE: (a: any) => stageShows.set(a),
+    STAGE_PEEK_STANZA: (a: any) => stagePeekStanza.set(a),
+    STAGE_SHOW_MENU: (a: any) => showStanzaMenu.set(a),
 
     // for dynamic values
     PROJECTS: (a: any) => projects.set(a),

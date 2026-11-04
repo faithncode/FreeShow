@@ -400,8 +400,8 @@
     {/if}
 
     {#if item}
-        <div bind:this={alignElem} class="align" style="--align: {item.align};--text-align: {item.alignX || 'center'};{item.type !== 'slide_text' || item.keepStyle ? 'height: 100%;' : ''}">
-            <span style="pointer-events: none;width: 100%;height: 100%;{item.type === 'current_output' ? 'position: relative;' : ''}">
+        <div bind:this={alignElem} class="align" style="--align: {item.align};--text-align: {item.alignX || 'center'};height: 100%;">
+            <span style="display: block;pointer-events: none;width: 100%;height: 100%;{item.type === 'current_output' ? 'position: relative;' : ''}">
                 {#if item.type === "current_output" || id.includes("current_output")}
                     <!-- use PreviewCanvas only in remote StageShow -->
                     <!-- {#if $currentWindow === "output" && !$special.optimizedMode} -->
@@ -487,8 +487,7 @@
         font-family: Arial, Helvetica, sans-serif;
         text-shadow: 2px 2px 10px #000000;
 
-        /* overflow is not hidden on stage display */
-        /* overflow: hidden; */
+        overflow: hidden;
 
         border-width: 0;
         border-style: solid;
@@ -505,6 +504,10 @@
     .stage_item.outline {
         outline: 5px solid rgb(255 255 255 / 0.2);
     }
+    .stage_item.outline,
+    .stage_item.selected {
+        overflow: visible;
+    }
     .stage_item.isShiftPressed,
     .stage_item.isShiftPressed :global(*:not(.line)) {
         cursor: default !important;
@@ -514,7 +517,6 @@
     }
     .stage_item.selected {
         outline: 5px solid var(--secondary);
-        overflow: visible;
         z-index: 4;
     }
     .stage_item.selected :global(.item),
@@ -523,7 +525,7 @@
     }
 
     .align {
-        /* height: 100%; */
+        height: 100%;
         display: flex;
         text-align: center;
         align-items: center;

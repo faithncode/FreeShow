@@ -5,7 +5,7 @@ export function getLayoutRef(currentShow: Show, layoutId: string = "") {
     let ref: LayoutRef[] = []
     if (!currentShow) return ref
 
-    if (!layoutId) layoutId = currentShow?.settings?.activeLayout
+    if (!layoutId || !currentShow?.layouts?.[layoutId]) layoutId = currentShow?.settings?.activeLayout || Object.keys(currentShow?.layouts || {})[0]
     if (!Array.isArray(currentShow?.layouts?.[layoutId]?.slides)) return []
 
     let layoutIndex: number = -1

@@ -113,6 +113,15 @@ export default function autosize(elem: HTMLElement, { type, textQuery, defaultFo
         const computedStyle = getComputedStyle(elem)
         let newWidth = elem.clientWidth - parseFloat(computedStyle.paddingRight) - parseFloat(computedStyle.paddingLeft)
         let newHeight = elem.clientHeight - parseFloat(computedStyle.paddingBottom) - parseFloat(computedStyle.paddingTop)
+
+        const stageContainer = elem.closest<HTMLElement>(".stage_item")
+        if (stageContainer && stageContainer.clientHeight > 0) {
+            newHeight = Math.min(newHeight > 0 ? newHeight : stageContainer.clientHeight, stageContainer.clientHeight)
+            if (stageContainer.clientWidth > 0) {
+                newWidth = Math.min(newWidth > 0 ? newWidth : stageContainer.clientWidth, stageContainer.clientWidth)
+            }
+        }
+
         cloned.style.width = `${newWidth}px`
         cloned.style.height = `${newHeight}px`
         cloned.style.padding = "0"

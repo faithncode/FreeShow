@@ -1,7 +1,9 @@
 <script lang="ts">
     import type { Item, LayoutRef, Line, OutSlide } from "../../../../types/Show"
     import type { StageItem } from "../../../../types/Stage"
-    import { showsCache } from "../../../stores"
+    import { OUTPUT } from "../../../../types/Channels"
+    import { send } from "../../../utils/request"
+    import { showsCache, stagePeekStanza } from "../../../stores"
     import { getItemText } from "../../edit/scripts/textStyle"
     import { clone } from "../../helpers/array"
     import { _show } from "../../helpers/shows"
@@ -46,6 +48,45 @@
 
     $: targetIndex = customOffset !== null ? customOffset : slideIndex
 
+    // ── 7-Second Stanza Peek / Lock ──────────────────────────────────────────
+    // Display that stanza's lines for the full 7 seconds minimum.
+    // Operator slide changes do NOT dismiss it early.
+    let activePeek: { groupId?: string; layoutIndex?: number; until: number } | null = null
+    let peekTimer: any = null
+
+    $: {
+        if ($stagePeekStanza) {
+            activePeek = $stagePeekStanza
+            if (peekTimer) clearTimeout(peekTimer)
+            peekTimer = setTimeout(() => {
+                activePeek = null
+                stagePeekStanza.set(null)
+                send(OUTPUT, ["STAGE_PEEK_STANZA"], null)
+            }, 7000)
+        } else {
+            activePeek = null
+            if (peekTimer) clearTimeout(peekTimer)
+        }
+    }
+
+    $: isPeeking = activePeek !== null
+    $: effectiveTargetIndex = isPeeking && activePeek?.layoutIndex !== undefined ? activePeek.layoutIndex : targetIndex
+
+    // groupRefs: used for showGroupLines or active peek
+    $: effectiveGroupRefs = (stageItem?.showGroupLines || isPeeking) && effectiveTargetIndex !== null && showRef && showRef[effectiveTargetIndex]
+        ? getGroupRefs(showRef, effectiveTargetIndex)
+        : []
+
+    $: effectiveSlideId = isPeeking && effectiveTargetIndex !== null && showRef
+        ? showRef[effectiveTargetIndex]?.id || null
+        : slideId
+
+    $: effectiveSlide = isPeeking && effectiveSlideId
+        ? clone($showsCache[currentSlide?.id]?.slides?.[effectiveSlideId] || slide)
+        : slide
+
+    $: effectiveReversedItems = !itemNumber && stageItem?.invertItems ? clone(effectiveSlide?.items || []) : clone(effectiveSlide?.items || []).reverse()
+
     // groupRefs: only used for showGroupLines (current-slide merged view)
     $: groupRefs = stageItem?.showGroupLines && targetIndex !== null && showRef && showRef[targetIndex] ? getGroupRefs(showRef, targetIndex) : []
 
@@ -83,11 +124,15 @@
     // ── items ────────────────────────────────────────────────────────────
     $: items = stageItem?.showNextUnseen
         ? getNextUnseenItems(showRef, seenGroupIds, targetIndex, langFilter)
-        : groupRefs.length && !isSingleGroupShow(showRef)
-            ? getGroupSlideItems(groupRefs, slideId, targetIndex, langFilter)
-            : style
-                ? filterItemsLanguage(clone(slide?.items || []), langFilter)
-                : combineSlideItems(reversedItems, langFilter)
+        : isPeeking
+            ? effectiveGroupRefs.length && !isSingleGroupShow(showRef)
+                ? getGroupSlideItems(effectiveGroupRefs, effectiveSlideId, effectiveTargetIndex, langFilter)
+                : combineSlideItems(effectiveReversedItems, langFilter)
+            : groupRefs.length && !isSingleGroupShow(showRef)
+                ? getGroupSlideItems(groupRefs, slideId, targetIndex, langFilter)
+                : style
+                    ? filterItemsLanguage(clone(slide?.items || []), langFilter)
+                    : combineSlideItems(reversedItems, langFilter)
 
     // ── Language filter helpers ──────────────────────────────────────────────
     function containsTamil(text: string): boolean {
@@ -389,7 +434,7 @@
     const waitDuration = 200
     let timeout: NodeJS.Timeout | null = null
     let prevItemsKey = ""
-    $: itemsKey = `${slideId || currentSlide?.id || ""}_${slideOffset}_${itemNumber}_${stageItem?.invertItems ? 1 : 0}_${style ? 1 : 0}_${(slide?.items || []).length}_${stageItem?.showGroupLines ? 1 : 0}_${stageItem?.showGroupLines ? targetIndex : ""}_${stageItem?.highlightCurrentLine !== false ? 1 : 0}_${stageItem?.lineFilter || "both"}_${stageItem?.showNextUnseen ? 1 : 0}_${stageItem?.nextStanzaLines ?? 2}`
+    $: itemsKey = `${slideId || currentSlide?.id || ""}_${slideOffset}_${itemNumber}_${stageItem?.invertItems ? 1 : 0}_${style ? 1 : 0}_${(slide?.items || []).length}_${stageItem?.showGroupLines ? 1 : 0}_${stageItem?.showGroupLines ? targetIndex : ""}_${stageItem?.highlightCurrentLine !== false ? 1 : 0}_${stageItem?.lineFilter || "both"}_${stageItem?.showNextUnseen ? 1 : 0}_${stageItem?.nextStanzaLines ?? 2}_${isPeeking ? effectiveTargetIndex : ""}`
     $: if (items && itemsKey !== prevItemsKey) {
         prevItemsKey = itemsKey
         preloadItems()
