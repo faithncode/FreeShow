@@ -546,22 +546,27 @@
                     {@const chordOnly = chords && chordOnlyLines[i]}
                     {#if !maxLines || i < maxLines}
                         {#if chordLines[i]}
-                            <div class:first={i === 0} class="break chords" style="--font-size: {fontSize}px;--offsetY: {stageItem?.chords?.offsetY || 0}px;{line.customStyle ? ';' + line.customStyle : ''}">
+                            <div class:first={i === 0} class="break chords" class:chordOnly style="--font-size: {fontSize}px;--offsetY: {stageItem?.chords?.offsetY || 0}px;{line.customStyle ? ';' + line.customStyle : ''}">
                                 {@html chordLines[i]}
                             </div>
                         {/if}
-                        <div class="break" class:reveal={item?.lineReveal && revealed < i} style="{style ? lineStyle : ''}{style ? line.align : ''}{line.customStyle ? ';' + line.customStyle : ''}">
-                            {#each line.text || [] as text}
-                                {@const value = text.value?.replaceAll("\n", "<br>") || "<br>"}
-                                {#key updateDynamic}
-                                    {#await replaceDynamicValues(value)}
-                                        <span style="{style ? text.style + (fontSize ? 'font-size: ' + fontSize + 'px;' : '') : 'font-size: ' + fontSize + 'px;'}{customStyle}">{@html getDynamicValue(value)}</span>
-                                    {:then newValue}
-                                        <span style="{style ? text.style + (fontSize ? 'font-size: ' + fontSize + 'px;' : '') : 'font-size: ' + fontSize + 'px;'}{customStyle}">{@html newValue}</span>
-                                    {/await}
-                                {/key}
-                            {/each}
-                        </div>
+                        {#if !chordOnly}
+                            <div class="break" class:reveal={item?.lineReveal && revealed < i} style="{style ? lineStyle : ''}{style ? line.align : ''}{item.list?.enabled && line.text?.reduce((value, text) => (value += text.value || ''), '')?.length ? getListStyle(item.list, fontSize, line.text?.[0]?.style || '') : ''}{item.list?.enabled ? `color: ${getStyles(line.text?.[0]?.style).color || ''};` : ''}{line.customStyle ? ';' + line.customStyle : ''}">
+                                {#each line.text || [] as text}
+                                    {@const value = text.value?.replaceAll("\n", "<br>") || "<br>"}
+                                    <!-- remove font size it it's 0 -->
+                                    {@const textStyle = text.style?.replace(/font-size:\s*0(?:px)?;?/gi, "") || ""}
+
+                                    {#key updateDynamic}
+                                        {#await resolveDynamic(value)}
+                                            <span style="{style ? textStyle + (fontSize ? 'font-size: ' + fontSize + 'px;' : '') : 'font-size: ' + fontSize + 'px;'}{customStyle}">{@html getDynamicValue(value)}</span>
+                                        {:then newValue}
+                                            <span style="{style ? textStyle + (fontSize ? 'font-size: ' + fontSize + 'px;' : '') : 'font-size: ' + fontSize + 'px;'}{customStyle}">{@html newValue}</span>
+                                        {/await}
+                                    {/key}
+                                {/each}
+                            </div>
+                        {/if}
                     {/if}
                 {/each}
             </div>

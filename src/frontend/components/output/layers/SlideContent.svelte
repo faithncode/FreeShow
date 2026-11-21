@@ -495,9 +495,9 @@
                 {ratio}
                 {outputId}
                 ref={{ type: "show", showId: current.outSlide?.id, slideId: current.currentSlide?.id, id: current.currentSlide?.id || "", layoutId: current.outSlide?.layout, origin }}
-                linesStart={current.lines?.[currentLineId || ""]?.[item.lineReveal ? "linesStart" : "start"]}
-                linesEnd={current.lines?.[currentLineId || ""]?.[item.lineReveal ? "linesEnd" : "end"]}
-                clickRevealed={!!current.lines?.[currentLineId || ""]?.clickRevealed}
+                linesStart={getLineState(current.lines, current.outSlide, currentLineId)?.[item.lineReveal ? "linesStart" : "start"]}
+                linesEnd={getLineState(current.lines, current.outSlide, currentLineId)?.[item.lineReveal ? "linesEnd" : "end"]}
+                clickRevealed={!!getLineState(current.lines, current.outSlide, currentLineId)?.clickRevealed}
                 outputStyle={current.currentStyle}
                 {mirror}
                 {preview}
@@ -558,7 +558,23 @@
 {#if precomputeTargets.length}
     <div class="autosize-precompute" aria-hidden="true">
         {#each precomputeTargets as target (target.key)}
-            <Textbox item={target.item} {ratio} {outputId} outputStyle={currentStyle} {mirror} {preview} {styleIdOverride} ref={{ type: "show", showId: outSlide?.id, slideId: currentSlide?.id, id: currentSlide?.id || "", layoutId: outSlide?.layout, origin }} autoSizeKey={target.key} on:autosizeReady={handlePrecomputeReady} updateDynamicValues={!isClearing} />
+            <Textbox
+                item={target.item}
+                {ratio}
+                {outputId}
+                outputStyle={currentStyle}
+                {mirror}
+                {preview}
+                {styleIdOverride}
+                ref={{ type: "show", showId: outSlide?.id, slideId: currentSlide?.id, id: currentSlide?.id || "", layoutId: outSlide?.layout, origin }}
+                linesStart={getLineState(lines, outSlide, currentLineId)?.[target.item.lineReveal ? "linesStart" : "start"]}
+                linesEnd={getLineState(lines, outSlide, currentLineId)?.[target.item.lineReveal ? "linesEnd" : "end"]}
+                clickRevealed={!!getLineState(lines, outSlide, currentLineId)?.clickRevealed}
+                autoSizeKey={target.key}
+                itemIndex={target.index}
+                on:autosizeReady={handlePrecomputeReady}
+                updateDynamicValues={!isClearing}
+            />
         {/each}
     </div>
 {/if}

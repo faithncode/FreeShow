@@ -99,9 +99,6 @@ export function convertPowerpoint(files: any[]) {
                 if (!slide) continue
 
                 const id = uid()
-                // hidden PowerPoint slides are disabled
-                const layoutData = { transition: { type: "none", duration: 0, easing: "linear" } as const, ...(slide.hidden ? { disabled: true } : {}) }
-
                 const slideData: Slide = {
                     group: !firstSlideId ? "." : null,
                     color: null,
@@ -123,7 +120,8 @@ export function convertPowerpoint(files: any[]) {
                 // ───────────────────────────────────────────────────────────────────
 
                 const noTransition = { type: "none", duration: 0, easing: "linear" } as const
-                const layoutData: SlideData = { id, transition: noTransition, mediaTransition: noTransition }
+                // hidden PowerPoint slides are disabled
+                const layoutData: SlideData = { id, transition: noTransition, mediaTransition: noTransition, ...(slide.hidden ? { disabled: true } : {}) }
 
                 // ── Phase 2 per slide ────────────────────────────────────────────────
                 const textBlocks = extractTextBlocks(slide.items)
@@ -423,6 +421,20 @@ function buildScriptureDynamicValues(slide: { items: any[]; layoutName?: string;
     }
 
     return dv
+}
+
+// docProps/core.xml (parsed with preserveOrder) -> { "dc:title": "..." }
+function getCoreProperties(json: any): { [key: string]: string } | null {
+    const props = Array.isArray(json) ? json.find((n) => n?.["cp:coreProperties"])?.["cp:coreProperties"] : null
+    if (!Array.isArray(props)) return null
+
+    const values: { [key: string]: string } = {}
+    props.forEach((prop) => {
+        const key = Object.keys(prop || {}).find((k) => k !== ":@")
+        const text = key ? prop[key]?.[0]?.["#text"] : null
+        if (key && text != null) values[key] = String(text)
+    })
+    return values
 }
 
 // ── Font helpers ───────────────────────────────────────────────────────────────

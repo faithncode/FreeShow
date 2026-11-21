@@ -89,6 +89,8 @@ import {
     toggleMediaLoop,
     toggleMediaMute,
     toggleStageMenuAction,
+    toggleOutputRecording,
+    toggleSttListening,
     updateVolumeValues,
     videoSeekTo
 } from "./apiHelper"

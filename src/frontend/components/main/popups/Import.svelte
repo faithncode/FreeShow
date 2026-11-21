@@ -2,7 +2,7 @@
     import { Main } from "../../../../types/IPC/Main"
     import { importFromClipboard } from "../../../converters/importHelpers"
     import { sendMain } from "../../../IPC/main"
-    import { activePopup, alertMessage, popupData, special } from "../../../stores"
+    import { activePopup, alertMessage, os, popupData, special } from "../../../stores"
     import { translateText } from "../../../utils/language"
     import { presentationExtensions } from "../../../values/extensions"
     import Icon from "../../helpers/Icon.svelte"

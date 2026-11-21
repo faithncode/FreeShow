@@ -435,7 +435,8 @@
     const waitDuration = 200
     let timeout: NodeJS.Timeout | null = null
     let prevItemsKey = ""
-    $: itemsKey = `${slideId || currentSlide?.id || ""}_${slideOffset}_${itemNumber}_${stageItem?.invertItems ? 1 : 0}_${style ? 1 : 0}_${(slide?.items || []).length}_${stageItem?.showGroupLines ? 1 : 0}_${stageItem?.showGroupLines ? targetIndex : ""}_${stageItem?.highlightCurrentLine !== false ? 1 : 0}_${stageItem?.lineFilter || "both"}_${stageItem?.showNextUnseen ? 1 : 0}_${stageItem?.nextStanzaLines ?? 2}_${isPeeking ? effectiveTargetIndex : ""}`
+    $: tempContentKey = currentSlide?.id === "temp" ? JSON.stringify(slide?.items || []) : ""
+    $: itemsKey = `${slideId || currentSlide?.id || ""}_${slideOffset}_${itemNumber}_${stageItem?.invertItems ? 1 : 0}_${style ? 1 : 0}_${(slide?.items || []).length}_${stageItem?.showGroupLines ? 1 : 0}_${stageItem?.showGroupLines ? targetIndex : ""}_${stageItem?.highlightCurrentLine !== false ? 1 : 0}_${stageItem?.lineFilter || "both"}_${stageItem?.showNextUnseen ? 1 : 0}_${stageItem?.nextStanzaLines ?? 2}_${isPeeking ? effectiveTargetIndex : ""}_${tempContentKey}`
     $: if (items && itemsKey !== prevItemsKey) {
         prevItemsKey = itemsKey
         preloadItems()

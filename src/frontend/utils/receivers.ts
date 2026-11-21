@@ -52,6 +52,7 @@ import {
     shows,
     showsCache,
     showStanzaMenu,
+    presenting,
     slideTimelineSpeedMultiplier,
     special,
     stagePeekStanza,

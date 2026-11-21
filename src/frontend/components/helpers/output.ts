@@ -1412,7 +1412,7 @@ function getTextFormatSets(item: Item): TextFormatSets {
     )
 }
 
-export function mergeWithTemplate(slideItems: Item[], templateItems: Item[], addOverflowTemplateItems = false, resetAutoSize = true, templateClicked = false, mode: string = "", customDynamicValues: { [key: string]: string | [string, string][] } = {}, matchParentColor: boolean = false) {
+export function mergeWithTemplate(slideItems: Item[], templateItems: Item[], addOverflowTemplateItems = false, resetAutoSize = true, templateClicked = false, mode: string = "", customDynamicValues: { [key: string]: string | [string, string][] } = {}, isOutputStyle = false, matchParentColor: boolean = false) {
     slideItems = clone(slideItems || []).filter(Boolean)
     if (!templateItems.length) return slideItems
 
@@ -1957,7 +1957,7 @@ export function setTemplateStyle(outSlide: OutSlide | null, currentStyle: Styles
     // })
 
     const matchParentColor = !!(template?.settings?.matchParentColor)
-    const newItems = mergeWithTemplate(slideItems || [], templateItems, true, true, false, mode, customDynamicValues, matchParentColor) || []
+    const newItems = mergeWithTemplate(slideItems || [], templateItems, true, true, false, mode, customDynamicValues, true, matchParentColor) || []
     newItems.push(...getSlideItemsFromTemplate(template.settings || {}))
 
     // console.log("[DEBUG - setTemplateStyle] After merge", {

@@ -760,7 +760,7 @@ function handleTemplate(obj, data, initializing) {
             const changeOverflowItems = !!(slide.settings?.template || createItems)
             const mode = slideTemplate?.settings?.mode
             const matchParentColor = !!(slideTemplate?.settings?.matchParentColor)
-            let newItems = mergeWithTemplate(slide.items, slideTemplate.items, changeOverflowItems, obj.save !== false, createItems, mode, slide.customDynamicValues, matchParentColor)
+            let newItems = mergeWithTemplate(slide.items, slideTemplate.items, changeOverflowItems, obj.save !== false, createItems, mode, slide.customDynamicValues, false, matchParentColor)
 
             if (changeOverflowItems) {
                 const templateItemCount = getItemsCountByType(slideTemplate.items)

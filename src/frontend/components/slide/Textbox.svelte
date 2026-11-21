@@ -845,38 +845,81 @@
     on:mouseup={release}
 >
     {#if lines && !noTextMode}
-        <TextboxLines
-            {item}
-            {slideIndex}
-            {key}
-            {smallFontSize}
-            {animationStyle}
-            {dynamicValues}
-            {isStage}
-            {customFontSize}
-            {outputStyle}
-            {ref}
-            {style}
-            {customStyle}
-            {stageItem}
-            {chords}
-            {linesStart}
-            {linesEnd}
-            fontSize={smallFontSize ? 20 : fontSize}
-            {customTypeRatio}
-            {maxLines}
-            {maxLinesInvert}
-            {centerPreview}
-            {revealed}
-            styleOverrides={templateStyleOverrides}
-            {useOriginalTextColor}
-            hideContent={hideUntilAutosized}
-            {normalWrap}
-            {highlighedLines}
-            on:updateAutoSize={calculateAutosize}
-            {updateDynamicValues}
-            {isScriptureContext}
-        />
+        {#if textTransition}
+            <div class="textTransitionContainer">
+                {#key `${textTransition.show}-${textTransition.renderVersion}-${itemIndex}`}
+                    {#if textTransition.show}
+                        <SlideItemTransition {preview} transitionEnabled={textTransition.transitionEnabled} transitioningBetween={textTransition.transitioningBetween} isClearing={textTransition.isClearing} incomingNeedsAutoSize={textTransition.incomingNeedsAutoSize} globalTransition={textTransition.globalTransition} item={{ ...item, autoFontSize: hasAutoSize ? fontSize || item?.autoFontSize : 0 }} lines={textTransition.lines} let:customItem let:customLines>
+                            <TextboxLines
+                                item={customItem}
+                                {slideIndex}
+                                {key}
+                                {smallFontSize}
+                                {animationStyle}
+                                {dynamicValues}
+                                {isStage}
+                                {customFontSize}
+                                {outputStyle}
+                                {ref}
+                                {style}
+                                {customStyle}
+                                {stageItem}
+                                chords={customItem.chords?.enabled ?? chords}
+                                linesStart={customLines?.[textTransition.currentLineId || ""]?.[customItem.lineReveal ? "linesStart" : "start"]}
+                                linesEnd={customLines?.[textTransition.currentLineId || ""]?.[customItem.lineReveal ? "linesEnd" : "end"]}
+                                fontSize={smallFontSize ? 20 : isStage || hasAutoSize ? customItem.autoFontSize || fontSize : 0}
+                                {customTypeRatio}
+                                {maxLines}
+                                {maxLinesInvert}
+                                {centerPreview}
+                                {revealed}
+                                styleOverrides={templateStyleOverrides}
+                                {useOriginalTextColor}
+                                hideContent={hideUntilAutosized}
+                                {normalWrap}
+                                {highlighedLines}
+                                on:updateAutoSize={calculateAutosize}
+                                {updateDynamicValues}
+                                {isScriptureContext}
+                            />
+                        </SlideItemTransition>
+                    {/if}
+                {/key}
+            </div>
+        {:else}
+            <TextboxLines
+                {item}
+                {slideIndex}
+                {key}
+                {smallFontSize}
+                {animationStyle}
+                {dynamicValues}
+                {isStage}
+                {customFontSize}
+                {outputStyle}
+                {ref}
+                {style}
+                {customStyle}
+                {stageItem}
+                {chords}
+                {linesStart}
+                {linesEnd}
+                fontSize={smallFontSize ? 20 : isStage || hasAutoSize ? fontSize : 0}
+                {customTypeRatio}
+                {maxLines}
+                {maxLinesInvert}
+                {centerPreview}
+                {revealed}
+                styleOverrides={templateStyleOverrides}
+                {useOriginalTextColor}
+                hideContent={hideUntilAutosized}
+                {normalWrap}
+                {highlighedLines}
+                on:updateAutoSize={calculateAutosize}
+                {updateDynamicValues}
+                {isScriptureContext}
+            />
+        {/if}
     {:else}
         <SlideItems {item} {slideIndex} {preview} miniPreview={miniPreview || centerPreview} {isTemplatePreview} {ratio} {smallFontSize} {ref} {fontSize} {outputId} />
     {/if}
