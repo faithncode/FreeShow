@@ -144,11 +144,11 @@ export const slideTimers: Writable<{ [key: string]: SlideTimer }> = writable({})
 export const outputCache: Writable<any> = writable(null)
 export const outputSlideCache: Writable<any> = writable({})
 export const stagePeekStanza: Writable<{
-    groupId?: string
-    layoutIndex?: number
-    until: number
-    slideIndexAtPeek?: number
+    showId: string
+    groupId: string
+    layoutIndex: number
     key?: string
+    state: "queued" | "live"
 } | null> = writable(null)
 export const singerAlert: Writable<{
     stanza: string

@@ -3,6 +3,7 @@ import type { ContentProviderId } from "../../electron/contentProviders/base/typ
 import { OUTPUT, STARTUP } from "../../types/Channels"
 import { Main } from "../../types/IPC/Main"
 import { checkStartupActions } from "../components/actions/actions"
+import { initNumpadGuard } from "../components/actions/numpad"
 import { syncIcsCalendars } from "../components/drawer/calendar/calendars"
 import { getTimeFromInterval } from "../components/helpers/time"
 import { requestMain, requestMainMultiple, sendMain, sendMainMultiple } from "../IPC/main"
@@ -44,6 +45,10 @@ export async function startup() {
             if (type) loaded.set(true)
 
             if (type === "pdf") return
+
+            // before any other key listeners (in output windows as well)
+            initNumpadGuard()
+
             // a media window takes the same data as an output
             if (type === "output" || type === "media") {
                 startupOutput()

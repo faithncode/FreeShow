@@ -8,9 +8,10 @@ import { clearAudio } from "../../audio/audioFading"
 import { AudioPlayer } from "../../audio/audioPlayer"
 import { AudioPlaylist } from "../../audio/audioPlaylist"
 import { dbToGain } from "../../audio/dBUtils"
-import { activeDrawerTab, activeEdit, activePage, activeProject, activeShow, activeTimers, allOutputs, audioChannelsData, audioPlaylists, audioRouting, draw, drawSettings, drawTool, folders, groupNumbers, groups, media, openScripture, outLocked, outputs, overlays, pdfImports, playingAudio, playingMetronome, projects, refreshEditSlide, selected, shows, showsCache, showStanzaMenu, singerAlert, sortedShowsList, special, stagePeekStanza, styles, timers, variables } from "../../stores"
+import { activeDrawerTab, activeEdit, activePage, activeProject, activeShow, activeTimers, allOutputs, audioChannelsData, audioPlaylists, audioRouting, draw, drawSettings, drawTool, folders, groupNumbers, groups, media, openScripture, outLocked, outputs, overlays, pdfImports, playingAudio, playingMetronome, projects, refreshEditSlide, selected, shows, showsCache, showStanzaMenu, singerAlert, sortedShowsList, special, styles, timers, variables } from "../../stores"
 import { isOutputWindow, newToast, triggerFunction } from "../../utils/common"
 import { send } from "../../utils/request"
+import { stageRequests } from "../stage/stageRequests"
 import { parseEngScriptureRefToNumbers, resolveScriptureReference } from "../drawer/bible/scripture"
 import { isOutputRecording, startOutputRecording, stopOutputRecording } from "../drawer/live/recorder"
 import { getDynamicValue } from "../edit/scripts/itemHelpers"
@@ -191,16 +192,7 @@ export function peekStanzaAction(data: { key?: string; index?: number; layoutInd
         // Standard toast fallback
         newToast(`🎤 Singer Key: ${data.key ? data.key.toUpperCase() : stanzaLabel}`)
 
-        const payload = {
-            layoutIndex: targetIndex,
-            groupId,
-            key: data.key,
-            until: untilTime,
-            slideIndexAtPeek: outSlide?.index
-        }
-        stagePeekStanza.set(payload)
-        send(STAGE, ["PEEK_STANZA"], payload)
-        send(OUTPUT, ["STAGE_PEEK_STANZA"], payload)
+        if (groupId) stageRequests.request({ showId: currentShowId, groupId, layoutIndex: targetIndex, key: data.key })
     } else if (data.key) {
         singerAlert.set({
             stanza: data.key.toUpperCase(),
@@ -209,14 +201,6 @@ export function peekStanzaAction(data: { key?: string; index?: number; layoutInd
             until: Date.now() + 7000
         })
         newToast(`🎤 Singer requested: ${data.key.toUpperCase()}`)
-
-        const payload = {
-            key: data.key,
-            until: Date.now() + 7000
-        }
-        stagePeekStanza.set(payload)
-        send(STAGE, ["PEEK_STANZA"], payload)
-        send(OUTPUT, ["STAGE_PEEK_STANZA"], payload)
     }
 }
 

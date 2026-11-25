@@ -337,6 +337,9 @@ export function storeSubscriber() {
     })
 
     special.subscribe((data) => {
+        // the singer numpad is stored here
+        hidInListen()
+
         send(OUTPUT, ["SPECIAL"], data)
     })
 

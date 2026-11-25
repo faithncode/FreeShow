@@ -1310,7 +1310,10 @@
     },
     "hid": {
         "data_bytes": "Data bytes",
-        "auto_values": "Update values on HID input"
+        "auto_values": "Update values on HID input",
+        "numpad": "Singer numpad",
+        "numpad_enable": "Use a separate numpad for singer controls",
+        "numpad_tip": "NumLock: menu, /: sync stage with the main screen, *: show the requested stanza (or next slide), -: interlude (reserved), 7 8 9 +: verse 1-4, 4 5 6 Backspace: verse 5-8, 1 2 3: verse 9-11, Enter: chorus, 0: intro, .: bridge. While enabled, number pad keys do not type or trigger shortcuts in FreeShow."
     },
     "emitters": {
         "emitter": "Emitter",

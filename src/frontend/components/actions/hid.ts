@@ -4,6 +4,7 @@ import type { Action } from "../../../types/Show"
 import { sendMain } from "../../IPC/main"
 import { actions } from "../../stores"
 import { runAction } from "./actions"
+import { getNumpadDevice, receivedNumpad } from "./numpad"
 
 const activePaths = new Set<string>()
 
@@ -13,6 +14,8 @@ export function hidInListen() {
             .filter((a) => a.customActivation === "hid_input" && a.enabled !== false && a.hid?.device && a.hid?.data?.length)
             .map((a) => a.hid!.device!)
     )
+    const numpad = getNumpadDevice()
+    if (numpad) required.add(numpad)
 
     // Close unused devices
     activePaths.forEach((path) => {
@@ -35,6 +38,9 @@ export function receivedHid(msg: { path?: string; data: number[] } | number[]) {
     const path = (msg as any)?.path?.toLowerCase()
     const data: number[] = Array.isArray(msg) ? msg : (msg as any)?.data || []
     if (!data.length) return
+
+    // the singer numpad has a fixed layout, so custom actions are not run for it
+    if (path && getNumpadDevice().toLowerCase() === path) return receivedNumpad(data)
 
     Object.entries(get(actions)).forEach(([actionId, action]: [string, Action]) => {
         if (action.customActivation !== "hid_input" || action.enabled === false) return

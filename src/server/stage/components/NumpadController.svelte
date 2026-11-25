@@ -220,12 +220,14 @@
         })
 
         const label = stanza?.label || (HOTKEY_META[key]?.label ?? key.toUpperCase())
-        flashToast(`Showing ${label} on stage (${Math.round(PEEK_DURATION_MS / 1000)}s)`)
+        flashToast(`Requested ${label}: press ▶ to show it`)
         closeMenu()
     }
 
-    function prevSlide() { send("RUN_ACTION", { id: "previous_slide" }) }
-    function nextSlide() { send("RUN_ACTION", { id: "next_slide" }) }
+    // same as the physical numpad: "previous" syncs the stage with the main screen,
+    // "next" moves a requested stanza to current (or advances when nothing is requested)
+    function prevSlide() { send("STAGE_SYNC") }
+    function nextSlide() { send("STAGE_NEXT") }
 
     // ── Stanza Guide Menu ─────────────────────────────────────────────────────
     // MENU button toggles the guide panel on stage monitors (80% lyrics / 20% guides).

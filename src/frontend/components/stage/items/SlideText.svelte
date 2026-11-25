@@ -1,8 +1,6 @@
 <script lang="ts">
     import type { Item, LayoutRef, Line, OutSlide } from "../../../../types/Show"
     import type { StageItem } from "../../../../types/Stage"
-    import { OUTPUT } from "../../../../types/Channels"
-    import { send } from "../../../utils/request"
     import { showsCache, stagePeekStanza } from "../../../stores"
     import { getItemText } from "../../edit/scripts/textStyle"
     import { clone } from "../../helpers/array"
@@ -49,29 +47,12 @@
 
     $: targetIndex = customOffset !== null ? customOffset : slideIndex
 
-    // ── 7-Second Stanza Peek / Lock ──────────────────────────────────────────
-    // Display that stanza's lines for the full 7 seconds minimum.
-    // Operator slide changes do NOT dismiss it early.
-    let activePeek: { groupId?: string; layoutIndex?: number; until: number } | null = null
-    let peekTimer: any = null
-
-    $: {
-        if ($stagePeekStanza) {
-            activePeek = $stagePeekStanza
-            if (peekTimer) clearTimeout(peekTimer)
-            peekTimer = setTimeout(() => {
-                activePeek = null
-                stagePeekStanza.set(null)
-                send(OUTPUT, ["STAGE_PEEK_STANZA"], null)
-            }, 7000)
-        } else {
-            activePeek = null
-            if (peekTimer) clearTimeout(peekTimer)
-        }
-    }
-
-    $: isPeeking = activePeek !== null
-    $: effectiveTargetIndex = isPeeking && activePeek?.layoutIndex !== undefined ? activePeek.layoutIndex : targetIndex
+    // ── Singer stanza request ────────────────────────────────────────────────
+    // queued: shown in the "next unseen" box, live: shown as the current text
+    $: request = $stagePeekStanza && $stagePeekStanza.showId === currentSlide?.id ? $stagePeekStanza : null
+    $: queuedGroupId = request?.state === "queued" ? request.groupId : null
+    $: isPeeking = request?.state === "live" && slideOffset === 0
+    $: effectiveTargetIndex = isPeeking ? request!.layoutIndex : targetIndex
 
     // groupRefs: used for showGroupLines or active peek
     $: effectiveGroupRefs = (stageItem?.showGroupLines || isPeeking) && effectiveTargetIndex !== null && showRef && showRef[effectiveTargetIndex]
@@ -124,7 +105,7 @@
 
     // ── items ────────────────────────────────────────────────────────────
     $: items = stageItem?.showNextUnseen
-        ? getNextUnseenItems(showRef, seenGroupIds, targetIndex, langFilter)
+        ? getNextUnseenItems(showRef, seenGroupIds, targetIndex, langFilter, queuedGroupId)
         : isPeeking
             ? effectiveGroupRefs.length && !isSingleGroupShow(showRef)
                 ? getGroupSlideItems(effectiveGroupRefs, effectiveSlideId, effectiveTargetIndex, langFilter)
@@ -307,7 +288,8 @@
     // "Stanza" = a whole GROUP (e.g. Verse 2), not a single slide within a group.
     // Collects lines from multiple slides within the next group (up to previewLines total).
     // Single-group shows fall back to per-slide mode via isSingleGroupShow().
-    function getNextUnseenItems(refList: LayoutRef[], seen: Set<string>, activeIndex: number | null, filter: string): Item[] {
+    // a requested stanza is shown instead, without changing what has been seen
+    function getNextUnseenItems(refList: LayoutRef[], seen: Set<string>, activeIndex: number | null, filter: string, requestedGroupId: string | null): Item[] {
         if (!refList.length) return []
         const previewLines = stageItem?.nextStanzaLines ?? 2
 
@@ -325,13 +307,14 @@
         const sortedGroups = [...groupMap.entries()].sort((a, b) => a[1].layoutIndex - b[1].layoutIndex)
 
         // Single-group fallback: no meaningful "next group" → show next slide instead
-        if (isSingleGroupShow(refList)) {
+        if (!requestedGroupId && isSingleGroupShow(refList)) {
             return getNextSlideItems(refList, activeIndex, filter, previewLines)
         }
 
         // Find next unseen group (forward, then cyclic)
-        let nextGroupId: string | null = null
+        let nextGroupId: string | null = requestedGroupId
         for (const [gId, { layoutIndex }] of sortedGroups) {
+            if (nextGroupId) break
             if (seen.has(gId) || gId === currentGroupId) continue
             if (layoutIndex <= currentGroupLayoutIndex) continue
             nextGroupId = gId; break
@@ -436,7 +419,7 @@
     let timeout: NodeJS.Timeout | null = null
     let prevItemsKey = ""
     $: tempContentKey = currentSlide?.id === "temp" ? JSON.stringify(slide?.items || []) : ""
-    $: itemsKey = `${slideId || currentSlide?.id || ""}_${slideOffset}_${itemNumber}_${stageItem?.invertItems ? 1 : 0}_${style ? 1 : 0}_${(slide?.items || []).length}_${stageItem?.showGroupLines ? 1 : 0}_${stageItem?.showGroupLines ? targetIndex : ""}_${stageItem?.highlightCurrentLine !== false ? 1 : 0}_${stageItem?.lineFilter || "both"}_${stageItem?.showNextUnseen ? 1 : 0}_${stageItem?.nextStanzaLines ?? 2}_${isPeeking ? effectiveTargetIndex : ""}_${tempContentKey}`
+    $: itemsKey = `${slideId || currentSlide?.id || ""}_${slideOffset}_${itemNumber}_${stageItem?.invertItems ? 1 : 0}_${style ? 1 : 0}_${(slide?.items || []).length}_${stageItem?.showGroupLines ? 1 : 0}_${stageItem?.showGroupLines ? targetIndex : ""}_${stageItem?.highlightCurrentLine !== false ? 1 : 0}_${stageItem?.lineFilter || "both"}_${stageItem?.showNextUnseen ? 1 : 0}_${stageItem?.nextStanzaLines ?? 2}_${isPeeking ? effectiveTargetIndex : ""}_${queuedGroupId || ""}_${tempContentKey}`
     $: if (items && itemsKey !== prevItemsKey) {
         prevItemsKey = itemsKey
         preloadItems()

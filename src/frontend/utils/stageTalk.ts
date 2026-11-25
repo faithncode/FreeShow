@@ -10,6 +10,7 @@ import { getCurrentProjectIndexes, getProjectItems } from "../components/helpers
 import { getGroupName, getLayoutRef } from "../components/helpers/show"
 import { _show } from "../components/helpers/shows"
 import { getCustomStageLabel } from "../components/stage/stage"
+import { stageRequests } from "../components/stage/stageRequests"
 import { actions, activeProject, activeShow, events, groups, media, metronome, metronomeTimer, outputs, projects, showsCache, showStanzaMenu, stageShows, timeFormat, timers, variables } from "../stores"
 import { connections } from "./../stores"
 import { translateText } from "./language"
@@ -248,6 +249,18 @@ export const receiveSTAGE = {
 
     PEEK_STANZA: (data: any) => {
         peekStanzaAction(data)
+    },
+
+    STAGE_NEXT: (_data: any, connectionId: string) => {
+        const stageId = get(connections).STAGE?.[connectionId]?.active
+        const hasPassword = Object.values(get(stageShows) || {}).some((s: any) => s?.password)
+        if (hasPassword && !stageId) return
+
+        stageRequests.next()
+    },
+
+    STAGE_SYNC: () => {
+        stageRequests.sync()
     },
 
     MENU_TOGGLE: (data: any) => {

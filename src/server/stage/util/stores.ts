@@ -53,11 +53,11 @@ export let metronome: Writable<any> = writable({})
 export let metronomeTimer: Writable<{ beat: number; timeToNext: number }> = writable({ beat: 0, timeToNext: 0 })
 
 export let peekStanza: Writable<{
-    groupId?: string
-    layoutIndex?: number
-    until: number
-    slideIndexAtPeek?: number
+    showId: string
+    groupId: string
+    layoutIndex: number
     key?: string
+    state: "queued" | "live"
 } | null> = writable(null)
 export let showStanzaMenu: Writable<boolean> = writable(false)
 

@@ -20,6 +20,8 @@
     import MaterialToggleSwitch from "../../inputs/MaterialToggleSwitch.svelte"
     import Tip from "../../main/Tip.svelte"
     import { stopPcoPlanChangeWatcher } from "../../../utils/pcoPlanSync"
+    import { os } from "../../../stores"
+    import NumpadSettings from "./NumpadSettings.svelte"
 
     let ip = "localhost"
 
@@ -283,6 +285,11 @@
 
     <MaterialToggleSwitch label="" checked={$special.remoteController} on:change={(e) => toggleRemoteController(e.detail)} />
 </InputRow>
+
+<!-- reading a separate numpad requires Windows Raw Input -->
+{#if $os.platform === "win32"}
+    <NumpadSettings />
+{/if}
 
 {#if !$providerConnections.planningcenter && (!$providerConnections.churchApps || cloudOnly.churchApps) && !$providerConnections.amazinglife && !$providerConnections.onstage}
     <!-- No provider connected - show connection options -->
