@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+      # temporary test builds, remove before merging
+      - feat/singer-numpad
 
 jobs:
   build:
