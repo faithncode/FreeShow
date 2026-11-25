@@ -6,7 +6,7 @@
     import { output, peekStanza, showsCache, showStanzaMenu, stageLayout } from "../util/stores"
 
     // ── Constants ─────────────────────────────────────────────────────────────
-    const VERSE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "["]
+    const VERSE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]"]
     const PEEK_DURATION_MS = 7000
     const AUTO_CLOSE_S = 5
 

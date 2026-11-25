@@ -6,8 +6,8 @@
     import { output, showsCache, showStanzaMenu } from "../util/stores"
 
     // ── Constants ─────────────────────────────────────────────────────────────
-    // Verse hotkeys: 1-11 -> Q, W, E, R, T, Y, U, I, O, P, [
-    const VERSE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "["]
+    // Verse hotkeys: 1-12 -> Q, W, E, R, T, Y, U, I, O, P, [, ]
+    const VERSE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]"]
     const PEEK_DURATION_MS = 7000
     const MENU_AUTO_CLOSE_S = 5
 
@@ -318,76 +318,40 @@
              ══════════════════════════════════════════════════════════════════ -->
         <div class="numpad-matrix">
 
-            <!-- ── ROW 1: MENU | < | > | INTERLUDE ────────────────────────── -->
-            <button class="key top-action menu-btn" on:click={openMenu} title="MENU (Guidance overlay)">
-                <span class="primary-text">MENU</span>
-                <span class="legend-text">GUIDE</span>
-            </button>
+            <!-- ROWS 1-4: three verses (1-12, left to right) and one control in column 4 -->
+            {#each [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]] as row, rowIndex}
+                {#each row as n}
+                    {@const k = verseKey(n)}
+                    {@const stanza = getStanzaByHotkey(k)}
+                    <button
+                        class="key verse-btn"
+                        class:active={stanza?.isCurrent || lastPeekedKey === k}
+                        class:seen={stanza?.isSeen && !stanza?.isCurrent}
+                        on:click={() => triggerPeek(k)}
+                        title={stanza ? `Verse ${n} (${k.toUpperCase()}): ${stanza.lines[0] || ""}` : `Verse ${n}`}
+                    >
+                        <span class="primary-text num">{n}</span>
+                        <span class="key-sub">{k.toUpperCase()}</span>
+                        {#if stanza?.isCurrent}<span class="live-dot" title="Current live stanza"></span>{/if}
+                    </button>
+                {/each}
 
-            <button class="key top-action nav-btn" on:click={prevSlide} title="Previous slide (<)">
-                <span class="primary-text">◀</span>
-                <span class="legend-text">&lt;</span>
-            </button>
-
-            <button class="key top-action nav-btn" on:click={nextSlide} title="Next slide (>)">
-                <span class="primary-text">▶</span>
-                <span class="legend-text">&gt;</span>
-            </button>
-
-            <button class="key top-action interlude-btn" title="Interlude (reserved)">
-                <span class="primary-text interlude-txt">INTERLUDE</span>
-                <span class="legend-text">—</span>
-            </button>
-
-            <!-- ── ROW 2: 1 | 2 | 3 | 4 ────────────────────────────────────── -->
-            {#each [1, 2, 3, 4] as n}
-                {@const k = verseKey(n)}
-                {@const stanza = getStanzaByHotkey(k)}
-                <button
-                    class="key verse-btn"
-                    class:active={stanza?.isCurrent || lastPeekedKey === k}
-                    class:seen={stanza?.isSeen && !stanza?.isCurrent}
-                    on:click={() => triggerPeek(k)}
-                    title={stanza ? `Verse ${n} (${k.toUpperCase()}): ${stanza.lines[0] || ""}` : `Verse ${n}`}
-                >
-                    <span class="primary-text num">{n}</span>
-                    <span class="key-sub">{k.toUpperCase()}</span>
-                    {#if stanza?.isCurrent}<span class="live-dot" title="Current live stanza"></span>{/if}
-                </button>
-            {/each}
-
-            <!-- ── ROW 3: 5 | 6 | 7 | 8 ────────────────────────────────────── -->
-            {#each [5, 6, 7, 8] as n}
-                {@const k = verseKey(n)}
-                {@const stanza = getStanzaByHotkey(k)}
-                <button
-                    class="key verse-btn"
-                    class:active={stanza?.isCurrent || lastPeekedKey === k}
-                    class:seen={stanza?.isSeen && !stanza?.isCurrent}
-                    on:click={() => triggerPeek(k)}
-                    title={stanza ? `Verse ${n} (${k.toUpperCase()}): ${stanza.lines[0] || ""}` : `Verse ${n}`}
-                >
-                    <span class="primary-text num">{n}</span>
-                    <span class="key-sub">{k.toUpperCase()}</span>
-                    {#if stanza?.isCurrent}<span class="live-dot" title="Current live stanza"></span>{/if}
-                </button>
-            {/each}
-
-            <!-- ── ROW 4: 9 | 10 | 11 | CHORUS (spans 2 rows) ─────────────── -->
-            {#each [9, 10, 11] as n}
-                {@const k = verseKey(n)}
-                {@const stanza = getStanzaByHotkey(k)}
-                <button
-                    class="key verse-btn"
-                    class:active={stanza?.isCurrent || lastPeekedKey === k}
-                    class:seen={stanza?.isSeen && !stanza?.isCurrent}
-                    on:click={() => triggerPeek(k)}
-                    title={stanza ? `Verse ${n} (${k.toUpperCase()}): ${stanza.lines[0] || ""}` : `Verse ${n}`}
-                >
-                    <span class="primary-text num">{n}</span>
-                    <span class="key-sub">{k.toUpperCase()}</span>
-                    {#if stanza?.isCurrent}<span class="live-dot" title="Current live stanza"></span>{/if}
-                </button>
+                {#if rowIndex === 0}
+                    <button class="key top-action menu-btn" on:click={openMenu} title="MENU (Guidance overlay)">
+                        <span class="primary-text">MENU</span>
+                        <span class="legend-text">GUIDE</span>
+                    </button>
+                {:else if rowIndex === 1}
+                    <button class="key top-action nav-btn" on:click={prevSlide} title="Sync stage with the main screen (<)">
+                        <span class="primary-text">SYNC</span>
+                        <span class="legend-text">&lt;</span>
+                    </button>
+                {:else if rowIndex === 2}
+                    <button class="key top-action nav-btn" on:click={nextSlide} title="Next (>)">
+                        <span class="primary-text">&#9654;</span>
+                        <span class="legend-text">&gt;</span>
+                    </button>
+                {/if}
             {/each}
 
             <!-- CHORUS: Enter key position, spans row 4 and 5 in column 4 -->
@@ -568,7 +532,7 @@
         flex: 1;
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        grid-template-rows: minmax(48px, 0.8fr) repeat(4, minmax(56px, 1fr));
+        grid-template-rows: repeat(5, minmax(52px, 1fr));
         gap: 10px;
         padding-top: 10px;
         box-sizing: border-box;
@@ -659,15 +623,6 @@
     .nav-btn .primary-text {
         font-size: 1.1rem;
         color: rgba(255,255,255,0.85);
-    }
-    .interlude-btn {
-        opacity: 0.45;
-        cursor: default;
-    }
-    .interlude-txt {
-        font-size: 0.62rem;
-        letter-spacing: 0.5px;
-        color: rgba(255,255,255,0.6);
     }
 
     /* ── Special Keys (Chorus, Intro, Bridge) ──────────────────────────────── */

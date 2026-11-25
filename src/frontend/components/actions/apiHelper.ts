@@ -91,7 +91,7 @@ export function gotoGroup(dataGroupId: string) {
     playNextGroup(globalGroupIds, { showRef, outSlide, currentShowId })
 }
 
-const VERSE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "["]
+const VERSE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]"]
 
 export function findStanzaIndexByKey(key: string, currentShowId: string, showRef: any[]): number {
     const lk = (key || "").toLowerCase().trim()
@@ -101,7 +101,7 @@ export function findStanzaIndexByKey(key: string, currentShowId: string, showRef
 
     let normalizedKey = lk
     const asNum = parseInt(lk)
-    if (!isNaN(asNum) && asNum >= 1 && asNum <= 11) {
+    if (!isNaN(asNum) && asNum >= 1 && asNum <= VERSE_KEYS.length) {
         normalizedKey = VERSE_KEYS[asNum - 1] || lk
     } else if (lk === "chorus") {
         normalizedKey = "a"

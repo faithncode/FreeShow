@@ -57,7 +57,7 @@
 {#if alert}
     <div
         class="singer-alert-card"
-        in:fly={{ y: -30, x: 20, duration: 250 }}
+        in:fly={{ y: 30, x: 20, duration: 250 }}
         out:scale={{ duration: 180, start: 0.95 }}
         role="alert"
     >
@@ -98,7 +98,7 @@
 <style>
     .singer-alert-card {
         position: fixed;
-        top: 18px;
+        bottom: 18px;
         right: 22px;
         z-index: 999999;
         width: 220px;

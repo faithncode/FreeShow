@@ -40,5 +40,4 @@ export function receivedNumpad(data: number[]) {
         peekStanzaAction({ key: action.key })
         if (get(showStanzaMenu)) toggleStageMenuAction(false)
     }
-    // "interlude" is reserved
 }

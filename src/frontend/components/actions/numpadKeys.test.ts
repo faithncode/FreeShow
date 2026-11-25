@@ -23,17 +23,18 @@ function setup(options: { enabled?: boolean; typing?: boolean } = {}) {
 
 describe("numpad layout", () => {
     it("maps all 18 keys", () => {
+        // in physical order, left to right and top to bottom
         const keys = [press(69), press(53, 2), press(55), press(74), press(71), press(72), press(73), press(78), press(75), press(76), press(77), press(14), press(79), press(80), press(81), press(28, 2), press(82), press(83)]
         const result = keys.map((data) => {
             const action = getNumpadFunction(data)
             return action?.type === "peek" ? action.key : action?.type
         })
 
-        expect(result).toEqual(["menu", "previous", "next", "interlude", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "a", "s", "b"])
+        expect(result).toEqual(["q", "w", "e", "menu", "r", "t", "y", "previous", "u", "i", "o", "next", "p", "[", "]", "a", "s", "b"])
     })
 
     it("accepts an extended NumLock", () => {
-        expect(getNumpadFunction(press(69, 2))?.type).toBe("menu")
+        expect(getNumpadFunction(press(69, 2))?.type).toBe("peek")
     })
 
     it("ignores other keys", () => {

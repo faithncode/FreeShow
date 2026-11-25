@@ -12,7 +12,7 @@
     export let sourceOutputId: string = ""
     export let lineFilter: string = "both"
 
-    const VERSE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "["]
+    const VERSE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]"]
     const AUTO_CLOSE_S = 5
 
     interface StanzaInfo {

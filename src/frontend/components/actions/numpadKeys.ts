@@ -1,6 +1,6 @@
 // Singer numpad: pure key mapping and keyboard blocking logic (no app imports, so it can be tested)
 
-export type NumpadFunction = { type: "menu" } | { type: "previous" } | { type: "next" } | { type: "interlude" } | { type: "peek"; key: string }
+export type NumpadFunction = { type: "menu" } | { type: "previous" } | { type: "next" } | { type: "peek"; key: string }
 
 // Raw Input flag for extended keys (Numpad "/" and "Enter")
 const E0 = 2
@@ -10,24 +10,27 @@ const verse = (key: string): NumpadFunction => ({ type: "peek", key })
 // Keyed by scan code, which identifies the physical key regardless of the NumLock state
 // "<scan code>" or "<scan code>e" for extended keys
 const LAYOUT: { [id: string]: NumpadFunction } = {
-    "69": { type: "menu" }, // NumLock
-    "53e": { type: "previous" }, // /
-    "55": { type: "next" }, // *
-    "74": { type: "interlude" }, // -
+    // verses 1-12 run left to right, top to bottom
+    "69": verse("q"), // NumLock: verse 1
+    "53e": verse("w"), // /: verse 2
+    "55": verse("e"), // *: verse 3
 
-    "71": verse("q"), // 7: verse 1
-    "72": verse("w"), // 8: verse 2
-    "73": verse("e"), // 9: verse 3
-    "78": verse("r"), // +: verse 4
+    "71": verse("r"), // 7: verse 4
+    "72": verse("t"), // 8: verse 5
+    "73": verse("y"), // 9: verse 6
 
-    "75": verse("t"), // 4: verse 5
-    "76": verse("y"), // 5: verse 6
-    "77": verse("u"), // 6: verse 7
-    "14": verse("i"), // Backspace: verse 8
+    "75": verse("u"), // 4: verse 7
+    "76": verse("i"), // 5: verse 8
+    "77": verse("o"), // 6: verse 9
 
-    "79": verse("o"), // 1: verse 9
-    "80": verse("p"), // 2: verse 10
-    "81": verse("["), // 3: verse 11
+    "79": verse("p"), // 1: verse 10
+    "80": verse("["), // 2: verse 11
+    "81": verse("]"), // 3: verse 12
+
+    "74": { type: "menu" }, // -
+    "78": { type: "previous" }, // +: sync
+    "14": { type: "next" }, // Backspace
+
     "28e": verse("a"), // Enter: chorus
 
     "82": verse("s"), // 0: intro
