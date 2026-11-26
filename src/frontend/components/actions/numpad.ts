@@ -1,9 +1,11 @@
 import { get } from "svelte/store"
+import { Main } from "../../../types/IPC/Main"
+import { requestMain } from "../../IPC/main"
 import { showStanzaMenu, special } from "../../stores"
 import { isTypingTarget } from "../../utils/shortcutsHelper"
 import { stageRequests } from "../stage/stageRequests"
 import { peekStanzaAction, toggleStageMenuAction } from "./apiHelper"
-import { createNumpadGuard, getNumpadFunction, isNumpadBackspace } from "./numpadKeys"
+import { createNumpadGuard, findNumpadDevice, getNumpadFunction, isNumpadBackspace } from "./numpadKeys"
 
 // device path of the enabled singer numpad
 export function getNumpadDevice(): string {
@@ -21,6 +23,19 @@ const guard = createNumpadGuard({
         target.dispatchEvent(copy)
     }
 })
+
+// update the saved path if the numpad was plugged into another port
+export function reconnectNumpad(devices?: { path?: string }[]) {
+    const saved = getNumpadDevice()
+    if (!saved) return
+    if (!devices) return void requestMain(Main.GET_HID_DEVICES, undefined, (data) => reconnectNumpad(data || []))
+
+    const device = findNumpadDevice(
+        saved,
+        devices.map((a) => a.path || "")
+    )
+    if (device !== saved) special.update((a) => ({ ...a, numpad: { ...a.numpad, device } }))
+}
 
 export function initNumpadGuard() {
     window.addEventListener("keydown", guard.keydown, true)

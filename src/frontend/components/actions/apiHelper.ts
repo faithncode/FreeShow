@@ -12,6 +12,7 @@ import { activeDrawerTab, activeEdit, activePage, activeProject, activeShow, act
 import { isOutputWindow, newToast, triggerFunction } from "../../utils/common"
 import { send } from "../../utils/request"
 import { stageRequests } from "../stage/stageRequests"
+import { getStanzaKeyLabel } from "./numpadKeys"
 import { parseEngScriptureRefToNumbers, resolveScriptureReference } from "../drawer/bible/scripture"
 import { isOutputRecording, startOutputRecording, stopOutputRecording } from "../drawer/live/recorder"
 import { getDynamicValue } from "../edit/scripts/itemHelpers"
@@ -178,7 +179,7 @@ export function peekStanzaAction(data: { key?: string; index?: number; layoutInd
         const groupId = data.groupId || (ref ? (ref.type === "child" ? ref.parent?.id : ref.id) : undefined)
         const show = get(showsCache)[currentShowId] || _show(currentShowId).get()
         const rawGroupName = groupId && show?.slides?.[groupId]?.group
-        const stanzaLabel = rawGroupName ? rawGroupName.trim() : (data.key ? `Key ${data.key.toUpperCase()}` : `Slide ${targetIndex + 1}`)
+        const stanzaLabel = rawGroupName ? rawGroupName.trim() : (data.key ? `Key ${getStanzaKeyLabel(data.key)}` : `Slide ${targetIndex + 1}`)
         const untilTime = data.until || (Date.now() + 7000)
 
         // Eye-catching top-right alert for the lyrics operator
@@ -190,17 +191,17 @@ export function peekStanzaAction(data: { key?: string; index?: number; layoutInd
         })
 
         // Standard toast fallback
-        newToast(`🎤 Singer Key: ${data.key ? data.key.toUpperCase() : stanzaLabel}`)
+        newToast(`🎤 Singer Key: ${data.key ? getStanzaKeyLabel(data.key) : stanzaLabel}`)
 
         if (groupId) stageRequests.request({ showId: currentShowId, groupId, layoutIndex: targetIndex, key: data.key })
     } else if (data.key) {
         singerAlert.set({
-            stanza: data.key.toUpperCase(),
+            stanza: getStanzaKeyLabel(data.key),
             key: data.key,
             timestamp: Date.now(),
             until: Date.now() + 7000
         })
-        newToast(`🎤 Singer requested: ${data.key.toUpperCase()}`)
+        newToast(`🎤 Singer requested: ${getStanzaKeyLabel(data.key)}`)
     }
 }
 

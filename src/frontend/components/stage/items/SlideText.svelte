@@ -51,8 +51,13 @@
     // queued: shown in the "next unseen" box, live: shown as the current text
     $: request = $stagePeekStanza && $stagePeekStanza.showId === currentSlide?.id ? $stagePeekStanza : null
     $: queuedGroupId = request?.state === "queued" ? request.groupId : null
-    $: isPeeking = request?.state === "live" && slideOffset === 0
-    $: effectiveTargetIndex = isPeeking ? request!.layoutIndex : targetIndex
+    // "held" keeps the stage text while another stanza is queued
+    $: stageIndex = request?.state === "live" ? request.layoutIndex : (request?.held ?? null)
+    $: isPeeking = stageIndex !== null && slideOffset === 0
+    $: effectiveTargetIndex = isPeeking ? stageIndex : targetIndex
+    // stanzas already shown on stage are not "next" again
+    $: skipGroupIds = request?.shown || []
+    $: fromSlide = request?.bySlide ? request.layoutIndex : null
 
     // groupRefs: used for showGroupLines or active peek
     $: effectiveGroupRefs = (stageItem?.showGroupLines || isPeeking) && effectiveTargetIndex !== null && showRef && showRef[effectiveTargetIndex]
@@ -105,7 +110,7 @@
 
     // ── items ────────────────────────────────────────────────────────────
     $: items = stageItem?.showNextUnseen
-        ? getNextUnseenItems(showRef, seenGroupIds, targetIndex, langFilter, queuedGroupId)
+        ? getNextUnseenItems(showRef, seenGroupIds, targetIndex, langFilter, queuedGroupId, skipGroupIds, fromSlide)
         : isPeeking
             ? effectiveGroupRefs.length && !isSingleGroupShow(showRef)
                 ? getGroupSlideItems(effectiveGroupRefs, effectiveSlideId, effectiveTargetIndex, langFilter)
@@ -289,7 +294,7 @@
     // Collects lines from multiple slides within the next group (up to previewLines total).
     // Single-group shows fall back to per-slide mode via isSingleGroupShow().
     // a requested stanza is shown instead, without changing what has been seen
-    function getNextUnseenItems(refList: LayoutRef[], seen: Set<string>, activeIndex: number | null, filter: string, requestedGroupId: string | null): Item[] {
+    function getNextUnseenItems(refList: LayoutRef[], seen: Set<string>, activeIndex: number | null, filter: string, requestedGroupId: string | null, skip: string[], fromSlide: number | null): Item[] {
         if (!refList.length) return []
         const previewLines = stageItem?.nextStanzaLines ?? 2
 
@@ -308,20 +313,20 @@
 
         // Single-group fallback: no meaningful "next group" → show next slide instead
         if (!requestedGroupId && isSingleGroupShow(refList)) {
-            return getNextSlideItems(refList, activeIndex, filter, previewLines)
+            return getNextSlideItems(refList, fromSlide ?? activeIndex, filter, previewLines)
         }
 
         // Find next unseen group (forward, then cyclic)
         let nextGroupId: string | null = requestedGroupId
         for (const [gId, { layoutIndex }] of sortedGroups) {
             if (nextGroupId) break
-            if (seen.has(gId) || gId === currentGroupId) continue
+            if (seen.has(gId) || gId === currentGroupId || skip.includes(gId)) continue
             if (layoutIndex <= currentGroupLayoutIndex) continue
             nextGroupId = gId; break
         }
         if (!nextGroupId) {
             for (const [gId] of sortedGroups) {
-                if (seen.has(gId) || gId === currentGroupId) continue
+                if (seen.has(gId) || gId === currentGroupId || skip.includes(gId)) continue
                 nextGroupId = gId; break
             }
         }
@@ -419,7 +424,7 @@
     let timeout: NodeJS.Timeout | null = null
     let prevItemsKey = ""
     $: tempContentKey = currentSlide?.id === "temp" ? JSON.stringify(slide?.items || []) : ""
-    $: itemsKey = `${slideId || currentSlide?.id || ""}_${slideOffset}_${itemNumber}_${stageItem?.invertItems ? 1 : 0}_${style ? 1 : 0}_${(slide?.items || []).length}_${stageItem?.showGroupLines ? 1 : 0}_${stageItem?.showGroupLines ? targetIndex : ""}_${stageItem?.highlightCurrentLine !== false ? 1 : 0}_${stageItem?.lineFilter || "both"}_${stageItem?.showNextUnseen ? 1 : 0}_${stageItem?.nextStanzaLines ?? 2}_${isPeeking ? effectiveTargetIndex : ""}_${queuedGroupId || ""}_${tempContentKey}`
+    $: itemsKey = `${slideId || currentSlide?.id || ""}_${slideOffset}_${itemNumber}_${stageItem?.invertItems ? 1 : 0}_${style ? 1 : 0}_${(slide?.items || []).length}_${stageItem?.showGroupLines ? 1 : 0}_${stageItem?.showGroupLines ? targetIndex : ""}_${stageItem?.highlightCurrentLine !== false ? 1 : 0}_${stageItem?.lineFilter || "both"}_${stageItem?.showNextUnseen ? 1 : 0}_${stageItem?.nextStanzaLines ?? 2}_${isPeeking ? effectiveTargetIndex : ""}_${queuedGroupId || ""}_${skipGroupIds.join()}_${fromSlide ?? ""}_${tempContentKey}`
     $: if (items && itemsKey !== prevItemsKey) {
         prevItemsKey = itemsKey
         preloadItems()

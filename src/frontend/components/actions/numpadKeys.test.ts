@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { createNumpadGuard, getNumpadFunction, isNumpadBackspace } from "./numpadKeys"
+import { createNumpadGuard, findNumpadDevice, getNumpadFunction, getStanzaKeyLabel, isNumpadBackspace, isNumpadDigit } from "./numpadKeys"
 
 // mocked Raw Input data: [virtual key, scan code, flags]
 const press = (scanCode: number, flags = 0) => [0, scanCode, flags]
@@ -37,6 +37,10 @@ describe("numpad layout", () => {
         expect(getNumpadFunction(press(69, 2))?.type).toBe("peek")
     })
 
+    it("labels stanza keys like the stickers", () => {
+        expect(["q", "r", "]", "a", "s", "b", "x"].map(getStanzaKeyLabel)).toEqual(["1", "4", "12", "C", "I", "B", "X"])
+    })
+
     it("ignores other keys", () => {
         expect(getNumpadFunction(press(30))).toBeNull() // A
         expect(getNumpadFunction(press(28))).toBeNull() // main Enter
@@ -47,6 +51,33 @@ describe("numpad layout", () => {
     it("detects Backspace", () => {
         expect(isNumpadBackspace(press(14))).toBe(true)
         expect(isNumpadBackspace(press(83))).toBe(false)
+    })
+})
+
+describe("numpad detection", () => {
+    // mocked device paths
+    const path = (id: string, port: string) => `\\\\?\\HID#${id}#${port}#{guid}\\KBD`
+    const saved = path("VID_3151&PID_3020&MI_00", "7&aaaa&0&0000")
+    const moved = path("VID_3151&PID_3020&MI_00", "7&bbbb&0&0000")
+    const laptop = path("VID_0B05&PID_1866&MI_01", "7&cccc&0&0000")
+
+    it("only accepts number pad number keys", () => {
+        expect(isNumpadDigit(press(71))).toBe(true)
+        expect(isNumpadDigit(press(82))).toBe(true)
+        expect(isNumpadDigit(press(71, 2))).toBe(false) // Home
+        expect(isNumpadDigit(press(14))).toBe(false) // Backspace
+        expect(isNumpadDigit(press(30))).toBe(false) // A
+    })
+
+    it("finds the numpad again in another port", () => {
+        expect(findNumpadDevice(saved, [laptop, saved])).toBe(saved)
+        expect(findNumpadDevice(saved, [laptop, moved])).toBe(moved)
+    })
+
+    it("keeps the saved device when it is missing or ambiguous", () => {
+        const second = path("VID_3151&PID_3020&MI_00", "7&dddd&0&0000")
+        expect(findNumpadDevice(saved, [laptop])).toBe(saved)
+        expect(findNumpadDevice(saved, [moved, second])).toBe(saved)
     })
 })
 

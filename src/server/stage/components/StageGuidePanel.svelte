@@ -8,7 +8,7 @@
     // ── Constants ─────────────────────────────────────────────────────────────
     const VERSE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]"]
     const PEEK_DURATION_MS = 7000
-    const AUTO_CLOSE_S = 5
+    const AUTO_CLOSE_S = 12
 
     interface StanzaInfo {
         groupId: string
@@ -131,7 +131,7 @@
             if (lowerName.startsWith("chorus") || lowerName === "c" || explicitKey === "a" || lowerName.includes("pallavi")) {
                 hotkey = hotkey || "a"; label = "CHORUS"; type = "chorus"; displayKey = "C"
             } else if (lowerName.startsWith("intro") || lowerName === "i" || explicitKey === "s") {
-                hotkey = hotkey || "s"; label = "INTRO"; type = "intro"; displayKey = "S"
+                hotkey = hotkey || "s"; label = "INTRO"; type = "intro"; displayKey = "I"
             } else if (lowerName.startsWith("bridge") || lowerName === "b" || explicitKey === "b" || lowerName.includes("anupallavi")) {
                 hotkey = hotkey || "b"; label = "BRIDGE"; type = "bridge"; displayKey = "B"
             } else {

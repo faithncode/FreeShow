@@ -13,7 +13,7 @@
     export let lineFilter: string = "both"
 
     const VERSE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]"]
-    const AUTO_CLOSE_S = 5
+    const AUTO_CLOSE_S = 12
 
     interface StanzaInfo {
         groupId: string
@@ -145,7 +145,7 @@
                 hotkey = hotkey || "s"
                 label = "INTRO"
                 type = "intro"
-                displayKey = "S"
+                displayKey = "I"
             } else if (lowerName.startsWith("bridge") || lowerName === "b" || explicitKey === "b" || lowerName.includes("anupallavi")) {
                 hotkey = hotkey || "b"
                 label = "BRIDGE"

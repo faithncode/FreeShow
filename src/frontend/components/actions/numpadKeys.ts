@@ -37,6 +37,14 @@ const LAYOUT: { [id: string]: NumpadFunction } = {
     "83": verse("b") // .: bridge
 }
 
+// what is printed on the numpad sticker for a stanza key
+export function getStanzaKeyLabel(key: string): string {
+    const verseNumber = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]"].indexOf(key.toLowerCase()) + 1
+    if (verseNumber) return String(verseNumber)
+
+    return { a: "C", s: "I", b: "B" }[key.toLowerCase()] || key.toUpperCase()
+}
+
 const NUMLOCK_SCAN_CODE = 69
 const BACKSPACE_SCAN_CODE = 14
 
@@ -52,6 +60,25 @@ export function getNumpadFunction(data: number[]): NumpadFunction | null {
 
 export function isNumpadBackspace(data: number[]): boolean {
     return data[1] === BACKSPACE_SCAN_CODE && !(data[2] & E0)
+}
+
+// used to detect which device is the numpad: 1-9, 0, ".", "-" and "+"
+// (these scan codes are only shared with the navigation keys, which are extended)
+export function isNumpadDigit(data: number[]): boolean {
+    return data.length >= 3 && data[1] >= 71 && data[1] <= 83 && !(data[2] & E0)
+}
+
+// the vendor, product and interface part of a device path, which stays the same in another USB port
+const getHardwareId = (path: string) => path.toLowerCase().match(/vid_[0-9a-f]{4}&pid_[0-9a-f]{4}(&mi_[0-9a-f]{2})?(&col[0-9a-f]+)?/)?.[0]
+
+// the saved path changes when the device is plugged into another port
+export function findNumpadDevice(savedPath: string, paths: string[]): string {
+    if (paths.some((a) => a.toLowerCase() === savedPath.toLowerCase())) return savedPath
+
+    const id = getHardwareId(savedPath)
+    const matches = id ? paths.filter((a) => getHardwareId(a) === id) : []
+    // two of the same model can't be told apart
+    return matches.length === 1 ? matches[0] : savedPath
 }
 
 // how long a Backspace press waits for the numpad to claim it

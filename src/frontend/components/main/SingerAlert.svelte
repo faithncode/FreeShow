@@ -2,6 +2,7 @@
     import { onDestroy } from "svelte"
     import { fly, scale } from "svelte/transition"
     import { singerAlert } from "../../stores"
+    import { getStanzaKeyLabel } from "../actions/numpadKeys"
 
     let alert: { stanza: string; key?: string; timestamp: number; until: number } | null = null
     let remainingSec = 7
@@ -51,7 +52,7 @@
         if (timer) clearTimeout(timer)
     })
 
-    $: displayKey = (alert?.key || alert?.stanza || "").toUpperCase()
+    $: displayKey = alert?.key ? getStanzaKeyLabel(alert.key) : (alert?.stanza || "").toUpperCase()
 </script>
 
 {#if alert}

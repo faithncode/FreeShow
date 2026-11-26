@@ -58,6 +58,9 @@ export let peekStanza: Writable<{
     layoutIndex: number
     key?: string
     state: "queued" | "live"
+    held?: number
+    shown?: string[]
+    bySlide?: boolean
 } | null> = writable(null)
 export let showStanzaMenu: Writable<boolean> = writable(false)
 

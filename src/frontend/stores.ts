@@ -149,6 +149,9 @@ export const stagePeekStanza: Writable<{
     layoutIndex: number
     key?: string
     state: "queued" | "live"
+    held?: number
+    shown?: string[]
+    bySlide?: boolean
 } | null> = writable(null)
 export const singerAlert: Writable<{
     stanza: string

@@ -9,7 +9,7 @@
     // Verse hotkeys: 1-12 -> Q, W, E, R, T, Y, U, I, O, P, [, ]
     const VERSE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]"]
     const PEEK_DURATION_MS = 7000
-    const MENU_AUTO_CLOSE_S = 5
+    const MENU_AUTO_CLOSE_S = 12
 
     interface StanzaInfo {
         groupId: string
@@ -220,12 +220,12 @@
         })
 
         const label = stanza?.label || (HOTKEY_META[key]?.label ?? key.toUpperCase())
-        flashToast(`Requested ${label}: press ▶ to show it`)
+        flashToast(`Requested ${label}: press again or ▶ to show it`)
         closeMenu()
     }
 
     // same as the physical numpad: "previous" syncs the stage with the main screen,
-    // "next" moves a requested stanza to current (or advances when nothing is requested)
+    // "next" moves the next unseen stanza to current, without changing the main screen
     function prevSlide() { send("STAGE_SYNC") }
     function nextSlide() { send("STAGE_NEXT") }
 
@@ -262,6 +262,8 @@
     function handleKey(e: KeyboardEvent) {
         const t = e.target as HTMLElement | null
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return
+        // holding a key down must not count as pressing it twice
+        if (e.repeat) return
         const key = e.key.toLowerCase()
 
         if (key === "escape") { e.preventDefault(); return }
@@ -328,10 +330,9 @@
                         class:active={stanza?.isCurrent || lastPeekedKey === k}
                         class:seen={stanza?.isSeen && !stanza?.isCurrent}
                         on:click={() => triggerPeek(k)}
-                        title={stanza ? `Verse ${n} (${k.toUpperCase()}): ${stanza.lines[0] || ""}` : `Verse ${n}`}
+                        title={stanza ? `Verse ${n}: ${stanza.lines[0] || ""}` : `Verse ${n}`}
                     >
                         <span class="primary-text num">{n}</span>
-                        <span class="key-sub">{k.toUpperCase()}</span>
                         {#if stanza?.isCurrent}<span class="live-dot" title="Current live stanza"></span>{/if}
                     </button>
                 {/each}
@@ -360,10 +361,10 @@
                 class:active={chorusStanza?.isCurrent || lastPeekedKey === "a"}
                 class:seen={chorusStanza?.isSeen && !chorusStanza?.isCurrent}
                 on:click={() => triggerPeek("a")}
-                title={chorusStanza ? `Chorus (A): ${chorusStanza.lines[0] || ""}` : "Chorus (A)"}
+                title={chorusStanza ? `Chorus (C): ${chorusStanza.lines[0] || ""}` : "Chorus (C)"}
             >
                 <span class="primary-text special-word">CHORUS</span>
-                <span class="key-sub hotkey-badge">A</span>
+                <span class="key-sub hotkey-badge">C</span>
                 {#if chorusStanza?.isCurrent}<span class="live-dot" title="Current live stanza"></span>{/if}
             </button>
 
@@ -374,10 +375,10 @@
                 class:active={introStanza?.isCurrent || lastPeekedKey === "s"}
                 class:seen={introStanza?.isSeen && !introStanza?.isCurrent}
                 on:click={() => triggerPeek("s")}
-                title={introStanza ? `Intro (S): ${introStanza.lines[0] || ""}` : "Intro (S)"}
+                title={introStanza ? `Intro (I): ${introStanza.lines[0] || ""}` : "Intro (I)"}
             >
                 <div class="intro-content">
-                    <span class="key-sub hotkey-badge">S</span>
+                    <span class="key-sub hotkey-badge">I</span>
                     <span class="primary-text special-word">INTRO</span>
                 </div>
                 {#if introStanza?.isCurrent}<span class="live-dot" title="Current live stanza"></span>{/if}

@@ -3,7 +3,7 @@ import type { ContentProviderId } from "../../electron/contentProviders/base/typ
 import { OUTPUT, STARTUP } from "../../types/Channels"
 import { Main } from "../../types/IPC/Main"
 import { checkStartupActions } from "../components/actions/actions"
-import { initNumpadGuard } from "../components/actions/numpad"
+import { initNumpadGuard, reconnectNumpad } from "../components/actions/numpad"
 import { syncIcsCalendars } from "../components/drawer/calendar/calendars"
 import { getTimeFromInterval } from "../components/helpers/time"
 import { requestMain, requestMainMultiple, sendMain, sendMainMultiple } from "../IPC/main"
@@ -83,6 +83,7 @@ async function startupMain() {
     setBeforeOutputSend(renderSignatureHook)
     storeSubscriber()
     remoteListen()
+    reconnectNumpad()
 
     const hasProfiles = Object.keys(get(profiles)).filter((a) => a !== "admin").length > 0
     if (!hasProfiles || get(activeProfile) !== null) checkStartupActions()
