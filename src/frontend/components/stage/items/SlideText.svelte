@@ -330,6 +330,13 @@
                 nextGroupId = gId; break
             }
         }
+        // everything has been shown: go round again, following on from the last one on stage
+        if (!nextGroupId) {
+            const ids = sortedGroups.map(([gId]) => gId)
+            const last = skip[skip.length - 1] ?? currentGroupId
+            const start = ids.indexOf(last!) + 1
+            nextGroupId = [...ids.slice(start), ...ids.slice(0, start)].find((gId) => gId !== last) || null
+        }
         if (!nextGroupId) return []
 
         // Collect all slides within that next group, sorted by layoutIndex
@@ -379,7 +386,12 @@
         // Walk forward from the current slide, skipping disabled slides
         let nextIdx = activeIndex + 1
         while (nextIdx < refList.length && refList[nextIdx]?.data?.disabled) nextIdx++
-        if (nextIdx >= refList.length) return [] // no next slide — end of show
+        // after the last slide it starts from the beginning
+        if (nextIdx >= refList.length) {
+            nextIdx = 0
+            while (nextIdx < refList.length && refList[nextIdx]?.data?.disabled) nextIdx++
+        }
+        if (nextIdx >= refList.length || nextIdx === activeIndex) return []
 
         const nextRef = refList[nextIdx]
         if (!nextRef) return []

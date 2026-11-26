@@ -33,17 +33,33 @@ export function getNextStanza(refs: SlideRef[], seen: Set<string>, activeIndex: 
     const groupIds = getGroupIds(refs)
 
     if (groupIds.length === 1) {
-        let index = (fromSlide ?? activeIndex) + 1
-        while (refs[index]?.data?.disabled) index++
-        return refs[index] ? { groupId: groupIds[0], layoutIndex: index, bySlide: true } : null
+        const from = fromSlide ?? activeIndex
+        const enabledFrom = (index: number) => {
+            while (refs[index]?.data?.disabled) index++
+            return index
+        }
+
+        let index = enabledFrom(from + 1)
+        // after the last slide it starts from the beginning
+        if (!refs[index]) index = enabledFrom(0)
+
+        return refs[index] && index !== from ?{ groupId: groupIds[0], layoutIndex: index, bySlide: true } : null
     }
 
     const currentGroupId = getGroupId(refs[activeIndex])
     const currentOrder = refs[activeIndex] ? getGroupOrder(refs[activeIndex]) : -1
     const order = (groupId: string) => getGroupOrder(refs.find((a) => getGroupId(a) === groupId)!)
 
-    const unseen = groupIds.sort((a, b) => order(a) - order(b)).filter((a) => !seen.has(a) && a !== currentGroupId && !skip.includes(a))
-    const groupId = unseen.find((a) => order(a) > currentOrder) || unseen[0]
+    const ordered = groupIds.sort((a, b) => order(a) - order(b))
+    const unseen = ordered.filter((a) => !seen.has(a) && a !== currentGroupId && !skip.includes(a))
+    let groupId: string | undefined = unseen.find((a) => order(a) > currentOrder) || unseen[0]
+
+    // everything has been shown: go round again, following on from the last one on stage
+    if (!groupId) {
+        const last = skip[skip.length - 1] ?? currentGroupId
+        const start = ordered.indexOf(last!) + 1
+        groupId = [...ordered.slice(start), ...ordered.slice(0, start)].find((a) => a !== last)
+    }
 
     return groupId ? { groupId, layoutIndex: refs.findIndex((a) => getGroupId(a) === groupId) } : null
 }
@@ -119,6 +135,8 @@ export function createStageRequests(options: Options) {
             const shown = current?.shown || []
             const target = getNextStanza(live.refs, seen, live.index, shown, current?.bySlide ? current.layoutIndex : undefined)
             if (!target) return
+            // gone all the way round to what is on the main screen
+            if (isRequestSynced({ ...target, showId: live.showId }, live)) return sync()
 
             update({ ...target, showId: live.showId, state: "live", shown: [...shown, target.groupId] })
         },

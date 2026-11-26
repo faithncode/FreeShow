@@ -61,6 +61,33 @@ describe("stage stanza requests", () => {
         }
     })
 
+    it("next goes round again after the last stanza", () => {
+        const { requests, shown } = setup()
+        const stage = () => {
+            requests.next()
+            return shown()?.groupId || "main screen"
+        }
+
+        const round = ["verse2", "verse3", "chorus", "bridge", "main screen"]
+        expect([...round, ...round].map(() => stage())).toEqual([...round, ...round])
+    })
+
+    it("next keeps cycling after requests and a moving main screen", () => {
+        const { requests, shown, stanza, mainShows } = setup()
+        mainShows(stanza("verse2"))
+        requests.request(chorus)
+        requests.next()
+
+        const stage: string[] = []
+        for (let i = 0; i < 20; i++) {
+            requests.next()
+            stage.push(shown()?.groupId || "main screen")
+        }
+
+        // it never gets stuck on one
+        expect(stage.some((a, i) => a === stage[i - 1])).toBe(false)
+    })
+
     it("next skips what the main screen has already shown", () => {
         const { requests, shown, stanza, mainShows } = setup()
         mainShows(stanza("verse2"))
@@ -102,6 +129,17 @@ describe("stage stanza requests", () => {
 
         mainShows({ showId: "song", groupId: "all", index: 2, refs })
         expect(shown()).toBe(null)
+    })
+
+    it("starts a one stanza song again after its last slide", () => {
+        const refs = [{ id: "all", layoutIndex: 0 }, ...[1, 2].map((layoutIndex) => ({ id: "child" + layoutIndex, type: "child", parent: { id: "all" }, layoutIndex }))]
+        const { requests, shown } = setup("all", refs)
+        const stage = () => {
+            requests.next()
+            return shown()?.layoutIndex ?? "main screen"
+        }
+
+        expect([1, 2, 3, 4, 5, 6].map(stage)).toEqual([1, 2, "main screen", 1, 2, "main screen"])
     })
 
     it("syncs when the main screen reaches the stanza", () => {
