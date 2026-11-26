@@ -9,6 +9,8 @@ import { createStageRequests, type LiveStanza } from "./stageRequest"
 // the stanza currently on the main screen
 function getLiveStanza(): LiveStanza {
     const allOutputs = get(outputs)
+    // getActiveOutputs creates a default output if there are none yet
+    if (!Object.keys(allOutputs).length) return null
     const activeIds = getActiveOutputs(allOutputs, false, true, true)
     const slide = allOutputs[activeIds[0]]?.out?.slide
     if (!slide?.id) return null
@@ -27,4 +29,7 @@ export const stageRequests = createStageRequests({
     }
 })
 
-outputs.subscribe(() => stageRequests.outputChanged())
+// called on startup: subscribing while the modules are still loading stops the app from opening
+export function initStageRequests() {
+    outputs.subscribe(() => stageRequests.outputChanged())
+}

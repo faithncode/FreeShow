@@ -5,6 +5,7 @@ import { Main } from "../../types/IPC/Main"
 import { checkStartupActions } from "../components/actions/actions"
 import { initNumpadGuard, reconnectNumpad } from "../components/actions/numpad"
 import { syncIcsCalendars } from "../components/drawer/calendar/calendars"
+import { initStageRequests } from "../components/stage/stageRequests"
 import { getTimeFromInterval } from "../components/helpers/time"
 import { requestMain, requestMainMultiple, sendMain, sendMainMultiple } from "../IPC/main"
 import { cameraManager } from "../media/cameraManager"
@@ -84,6 +85,7 @@ async function startupMain() {
     storeSubscriber()
     remoteListen()
     reconnectNumpad()
+    initStageRequests()
 
     const hasProfiles = Object.keys(get(profiles)).filter((a) => a !== "admin").length > 0
     if (!hasProfiles || get(activeProfile) !== null) checkStartupActions()
