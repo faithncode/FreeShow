@@ -67,9 +67,21 @@
     $: stageIndex = request?.state === "live" ? request.layoutIndex : (request?.held ?? null)
     $: isPeeking = stageIndex !== null && slideOffset === 0
     $: effectiveTargetIndex = isPeeking ? stageIndex : targetIndex
-    // stanzas already shown on stage are not "next" again
-    $: skipGroupIds = request?.shown || []
-    $: fromSlide = request?.bySlide ? request.layoutIndex : null
+    // "next unseen" is counted from what is current on stage
+    $: fromIndex = stageIndex ?? targetIndex
+
+    // highlights the current text when it is requested again
+    let flashing = false
+    let lastFlash = 0
+    let flashTimeout: ReturnType<typeof setTimeout> | null = null
+    $: startFlash(request?.flash)
+    function startFlash(flash: number | undefined) {
+        if (!flash || flash === lastFlash) return
+        lastFlash = flash
+        flashing = true
+        if (flashTimeout) clearTimeout(flashTimeout)
+        flashTimeout = setTimeout(() => (flashing = false), 2000)
+    }
 
     // groupRefs: used for showGroupLines (current-slide merged view) or active peek
     $: effectiveGroupRefs = (stageItem?.showGroupLines || isPeeking) && effectiveTargetIndex !== null && showRef && showRef[effectiveTargetIndex]
@@ -122,7 +134,7 @@
 
     // ── items ────────────────────────────────────────────────────────────
     $: items = stageItem?.showNextUnseen
-        ? getNextUnseenItems(showRef, seenGroupIds, targetIndex, langFilter, queuedGroupId, skipGroupIds, fromSlide)
+        ? getNextUnseenItems(showRef, request?.mark ?? furthest, fromIndex, langFilter, queuedGroupId)
         : isPeeking
             ? effectiveGroupRefs.length && !isSingleGroupShow(showRef)
                 ? getGroupSlideItems(effectiveGroupRefs, effectiveSlideId, effectiveTargetIndex, langFilter)
@@ -269,46 +281,38 @@
         return oneItem ? [oneItem as Item] : []
     }
 
-    // ── Seen GROUP tracking ───────────────────────────────────────────────────
-    // "Stanza" = a whole parent group (Verse 1, Chorus, etc.).
-    // When any slide within Verse 1 is active, the entire "Verse 1" group is seen.
-    let seenGroupIds: Set<string> = new Set()
+    // furthest stanza reached in the song: going back (like to a chorus) does not move it,
+    // only the first stanza starts the song again
+    let furthest = -1
     let lastTrackShowId: string | null = null
 
-    $: trackSeenGroups(currentSlide?.id, targetIndex, showRef)
+    // assigned here, so "items" is updated after this
+    $: furthest = trackFurthest(currentSlide?.id, targetIndex, showRef)
 
-    function trackSeenGroups(showId: string | undefined, idx: number | null, refList: LayoutRef[]) {
-        if (!showId) return
+    function trackFurthest(showId: string | undefined, idx: number | null, refList: LayoutRef[]): number {
+        if (!showId) return furthest
         if (showId !== lastTrackShowId) {
-            seenGroupIds = new Set()
+            furthest = -1
             lastTrackShowId = showId
         }
-        if (idx !== null && idx !== undefined && refList[idx]) {
-            const groupId = getGroupParentId(refList[idx])
-            if (!groupId) return
 
-            seenGroupIds.add(groupId)
+        const groupId = idx !== null && idx !== undefined && refList[idx] ? getGroupParentId(refList[idx]) : null
+        if (!groupId) return furthest
 
-            const allGroupIds = [...new Set(refList.map((r) => getGroupParentId(r)).filter(Boolean))] as string[]
-            if (allGroupIds.length > 0 && allGroupIds.every((gId) => seenGroupIds.has(gId))) {
-                seenGroupIds = new Set([groupId])
-            } else {
-                seenGroupIds = new Set(seenGroupIds)
-            }
-        }
+        const order = getGroupParentLayoutIndex(refList.find((r) => getGroupParentId(r) === groupId)!)
+        const first = Math.min(...refList.map((r) => getGroupParentLayoutIndex(r)))
+        return order === first ? order : Math.max(furthest, order)
     }
-
     // ── Mode 1: next unseen stanza (separate box) ─────────────────────────────
     // "Stanza" = a whole GROUP (e.g. Verse 2), not a single slide within a group.
     // Collects lines from multiple slides within the next group (up to previewLines total).
     // Single-group shows fall back to per-slide mode via isSingleGroupShow().
     // a requested stanza is shown instead, without changing what has been seen
-    function getNextUnseenItems(refList: LayoutRef[], seen: Set<string>, activeIndex: number | null, filter: string, requestedGroupId: string | null, skip: string[], fromSlide: number | null): Item[] {
+    function getNextUnseenItems(refList: LayoutRef[], mark: number, activeIndex: number | null, filter: string, requestedGroupId: string | null): Item[] {
         if (!refList.length) return []
         const previewLines = stageItem?.nextStanzaLines ?? 2
 
         const currentGroupId = activeIndex !== null && refList[activeIndex] ? getGroupParentId(refList[activeIndex]) : null
-        const currentGroupLayoutIndex = activeIndex !== null && refList[activeIndex] ? getGroupParentLayoutIndex(refList[activeIndex]) : -1
 
         const groupMap = new Map<string, { layoutIndex: number }>()
         refList.forEach((ref) => {
@@ -320,30 +324,23 @@
 
         // Single-group fallback: no meaningful "next group" → show next slide instead
         if (!requestedGroupId && isSingleGroupShow(refList)) {
-            return getNextSlideItems(refList, fromSlide ?? activeIndex, filter, previewLines)
+            return getNextSlideItems(refList, activeIndex, filter, previewLines)
         }
 
         let nextGroupId: string | null = requestedGroupId
         // Forward: find next unseen group after current
         for (const [gId, { layoutIndex }] of sortedGroups) {
             if (nextGroupId) break
-            if (seen.has(gId) || gId === currentGroupId || skip.includes(gId)) continue
-            if (layoutIndex <= currentGroupLayoutIndex) continue
+            if (gId === currentGroupId) continue
+            if (layoutIndex <= mark) continue
             nextGroupId = gId; break
         }
         // Cyclic: wrap from beginning
         if (!nextGroupId) {
             for (const [gId] of sortedGroups) {
-                if (seen.has(gId) || gId === currentGroupId || skip.includes(gId)) continue
+                if (gId === currentGroupId) continue
                 nextGroupId = gId; break
             }
-        }
-        // everything has been shown: go round again, following on from the last one on stage
-        if (!nextGroupId) {
-            const ids = sortedGroups.map(([gId]) => gId)
-            const last = skip[skip.length - 1] ?? currentGroupId
-            const start = ids.indexOf(last!) + 1
-            nextGroupId = [...ids.slice(start), ...ids.slice(0, start)].find((gId) => gId !== last) || null
         }
         if (!nextGroupId) return []
 
@@ -440,6 +437,10 @@
     $: slideBackgroundColor = (slide as any)?.settings?.color || currentSlide?.settings?.color || "transparent"
 </script>
 
+{#if flashing && slideOffset === 0 && !stageItem?.showNextUnseen}
+    <div class="flash"></div>
+{/if}
+
 {#if stageItem?.showNextUnseen}
     <!--
         NEXT UNSEEN STANZA BOX
@@ -466,3 +467,15 @@
         {/each}
     {/if}
 {/if}
+
+<style>
+    .flash {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        box-sizing: border-box;
+        border: 8px solid #ffd700;
+        box-shadow: 0 0 30px #ffd700, inset 0 0 30px #ffd700;
+        pointer-events: none;
+    }
+</style>

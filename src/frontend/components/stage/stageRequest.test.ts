@@ -12,12 +12,22 @@ function setup(groupId = "verse1", refs: any[] = song) {
     const stanza = (id: string, showId = "song") => ({ showId, groupId: id, index: refs.findIndex((a) => a.id === id), refs })
     let live: LiveStanza = stanza(groupId)
     const publish = vi.fn()
-    const requests = createStageRequests({ getLive: () => live, publish })
+    const timers = { cancelled: 0, ms: 0, callback: () => {} }
+    const schedule = (callback: () => void, ms: number) => {
+        timers.callback = callback
+        timers.ms = ms
+        return () => {
+            timers.cancelled++
+        }
+    }
+    const requests = createStageRequests({ getLive: () => live, publish, schedule })
     requests.outputChanged()
 
     return {
         requests,
         publish,
+        timers,
+        idle: () => timers.callback(),
         stanza,
         shown: () => publish.mock.calls[publish.mock.calls.length - 1][0],
         mainShows: (next: LiveStanza) => {
@@ -39,16 +49,94 @@ describe("stage stanza requests", () => {
         expect(shown().groupId).toBe("chorus")
     })
 
-    it("makes a stanza current when requested again", () => {
-        const { requests, publish, shown } = setup()
+    it("makes a stanza current when requested again, and then highlights it", () => {
+        const { requests, shown } = setup()
 
         requests.request(chorus)
         requests.request(chorus)
         expect(shown().state).toBe("live")
+        expect(shown().flash).toBe(undefined)
 
-        // a third press changes nothing
         requests.request(chorus)
-        expect(publish).toHaveBeenCalledTimes(2)
+        expect(shown().state).toBe("live")
+        const first = shown().flash
+        requests.request(chorus)
+        expect(shown().flash > first).toBe(true)
+    })
+
+    it("only highlights the stanza on the main screen", () => {
+        const { requests, shown } = setup("chorus")
+        requests.request(chorus)
+        expect(shown().state).toBe("synced")
+        expect(shown().flash > 0).toBe(true)
+    })
+
+    it("highlights the held stanza and keeps what is queued", () => {
+        const { requests, shown } = setup()
+        requests.next() // verse 2 on stage
+        requests.request(bridge)
+        requests.request({ showId: "song", groupId: "verse2", layoutIndex: 1 })
+        expect(shown()).toMatchObject({ groupId: "bridge", state: "queued", held: 1 })
+        expect(shown().flash > 0).toBe(true)
+    })
+
+    it("syncs after being idle, restarted by every key", () => {
+        const { requests, shown, idle, timers } = setup()
+        requests.request(chorus)
+        requests.next()
+        expect(timers.cancelled).toBe(1)
+        expect(timers.ms).toBe(20000)
+
+        idle()
+        expect(shown()).toBe(null)
+    })
+
+    // chorus is placed after verse 1 in the layout
+    const hymn = ["verse1", "chorus", "verse2", "verse3", "verse4", "verse5", "verse6"].map((id, layoutIndex) => ({ id, layoutIndex }))
+    const asked = (id: string) => ({ showId: "song", groupId: id, layoutIndex: hymn.findIndex((a) => a.id === id) })
+
+    // what "next unseen" holds: press next, read it, then sync back
+    function nextUnseen(test: ReturnType<typeof setup>) {
+        test.requests.next()
+        const groupId = test.shown()?.groupId
+        test.requests.sync()
+        return groupId
+    }
+
+    it("carries on from the furthest verse, not back to a skipped one or after the chorus", () => {
+        const test = setup("verse1", hymn)
+        const sung = (id: string) => {
+            test.mainShows(test.stanza(id))
+            return nextUnseen(test)
+        }
+
+        sung("verse2")
+        expect(sung("verse3")).toBe("verse4")
+        // verse 4 is skipped
+        expect(sung("verse5")).toBe("verse6")
+        expect(sung("chorus")).toBe("verse6")
+        expect(sung("verse6")).toBe("verse1")
+        expect(sung("chorus")).toBe("verse1")
+        // starts again
+        expect(sung("verse1")).toBe("chorus")
+    })
+
+    it("keeps the place after a chorus the singer asked for", () => {
+        const test = setup("verse1", hymn)
+        test.mainShows(test.stanza("verse5"))
+
+        test.requests.request(asked("chorus"))
+        test.requests.request(asked("chorus"))
+        test.requests.next()
+        expect(test.shown().groupId).toBe("verse6")
+    })
+
+    it("looks after the stanza the stage is on", () => {
+        const { requests, shown } = setup()
+        requests.request(chorus)
+        requests.next()
+        requests.next()
+        expect(shown().groupId).toBe("bridge")
     })
 
     it("next steps through the next unseen stanzas without a request", () => {
@@ -72,38 +160,12 @@ describe("stage stanza requests", () => {
         expect([...round, ...round].map(() => stage())).toEqual([...round, ...round])
     })
 
-    it("next keeps cycling after requests and a moving main screen", () => {
-        const { requests, shown, stanza, mainShows } = setup()
-        mainShows(stanza("verse2"))
-        requests.request(chorus)
-        requests.next()
-
-        const stage: string[] = []
-        for (let i = 0; i < 20; i++) {
-            requests.next()
-            stage.push(shown()?.groupId || "main screen")
-        }
-
-        // it never gets stuck on one
-        expect(stage.some((a, i) => a === stage[i - 1])).toBe(false)
-    })
-
     it("next skips what the main screen has already shown", () => {
         const { requests, shown, stanza, mainShows } = setup()
         mainShows(stanza("verse2"))
 
         requests.next()
         expect(shown().groupId).toBe("verse3")
-    })
-
-    it("next continues in order after a requested stanza", () => {
-        const { requests, shown } = setup()
-        requests.request(chorus)
-        requests.next()
-        requests.next()
-
-        expect(shown().groupId).toBe("verse2")
-        expect(shown().shown).toEqual(["chorus", "verse2"])
     })
 
     it("keeps the stage text while another stanza is queued", () => {
@@ -177,11 +239,5 @@ describe("stage stanza requests", () => {
 
         requests.next()
         expect(shown().groupId).toBe("verse2")
-    })
-
-    it("ignores a request for the stanza already on the main screen", () => {
-        const { requests, shown } = setup("chorus")
-        requests.request(chorus)
-        expect(shown()).toBe(null)
     })
 })

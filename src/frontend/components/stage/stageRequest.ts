@@ -1,21 +1,24 @@
 // A stanza shown on stage ahead of the main screen (pure logic, no app imports, so it can be tested)
 // queued: shown in the "next unseen" box
 // live: shown as the current text on stage (requested twice, or "next")
+// synced: nothing is ahead, only used to highlight the current text
 // Nothing here changes the main screen. It all ends when the main screen reaches the same stanza,
-// or when synced manually, and it never changes which stanzas count as seen.
+// when synced manually, or when the singer has been idle, and it never changes the point the main screen has reached.
 
 export type StageRequest = {
     showId: string
     groupId: string
     layoutIndex: number
     key?: string
-    state: "queued" | "live"
+    state: "queued" | "live" | "synced"
     // stays current on stage while another stanza is queued
     held?: number
-    // stanzas already shown as current, "next unseen" moves past these
-    shown?: string[]
+    // furthest stanza reached with the stage ahead, replaces what the main screen reached
+    mark?: number
     // a song with only one stanza is stepped through slide by slide
     bySlide?: boolean
+    // changes when the stanza already current on stage is requested
+    flash?: number
 }
 
 type SlideRef = { id: string; type?: string; parent?: { id?: string; layoutIndex?: number }; layoutIndex?: number; data?: { disabled?: boolean } }
@@ -24,44 +27,54 @@ export type LiveStanza = { showId: string; groupId: string | null; index: number
 
 export type NextStanza = { groupId: string; layoutIndex: number; bySlide?: boolean } | null
 
+// how long without any singer input before the stage returns to the main screen
+export const IDLE_SYNC_MS = 20000
+
 const getGroupId = (ref: SlideRef | undefined) => (ref ? (ref.type === "child" ? ref.parent?.id : ref.id) || null : null)
 const getGroupOrder = (ref: SlideRef) => (ref.type === "child" ? ref.parent?.layoutIndex : undefined) ?? ref.layoutIndex ?? 0
-const getGroupIds = (refs: SlideRef[]) => [...new Set(refs.map(getGroupId).filter(Boolean))] as string[]
 
-// the same choice as the "next unseen" box makes (see SlideText.svelte)
-export function getNextStanza(refs: SlideRef[], seen: Set<string>, activeIndex: number, skip: string[] = [], fromSlide?: number): NextStanza {
-    const groupIds = getGroupIds(refs)
+// stanzas in song order
+function getGroups(refs: SlideRef[]) {
+    const groups = new Map<string, number>()
+    refs.forEach((ref) => {
+        const groupId = getGroupId(ref)
+        if (groupId && !groups.has(groupId)) groups.set(groupId, getGroupOrder(ref))
+    })
+    return [...groups].map(([id, order]) => ({ id, order })).sort((a, b) => a.order - b.order)
+}
 
-    if (groupIds.length === 1) {
-        const from = fromSlide ?? activeIndex
+// "mark" is the furthest point reached in the song: going back (like to a chorus) does not move it,
+// only the first stanza starts the song again
+export function advanceMark(refs: SlideRef[], mark: number, groupId: string | null): number {
+    const groups = getGroups(refs)
+    const order = groups.find((a) => a.id === groupId)?.order
+    if (order === undefined) return mark
+
+    return order === groups[0].order ? order : Math.max(mark, order)
+}
+
+// the same choice as the "next unseen" box makes (see SlideText.svelte):
+// the stanza after the furthest one reached, otherwise from the beginning again
+export function getNextStanza(refs: SlideRef[], mark: number, fromIndex: number): NextStanza {
+    const groups = getGroups(refs)
+
+    if (groups.length === 1) {
         const enabledFrom = (index: number) => {
             while (refs[index]?.data?.disabled) index++
             return index
         }
 
-        let index = enabledFrom(from + 1)
-        // after the last slide it starts from the beginning
+        let index = enabledFrom(fromIndex + 1)
         if (!refs[index]) index = enabledFrom(0)
 
-        return refs[index] && index !== from ?{ groupId: groupIds[0], layoutIndex: index, bySlide: true } : null
+        return refs[index] && index !== fromIndex ? { groupId: groups[0].id, layoutIndex: index, bySlide: true } : null
     }
 
-    const currentGroupId = getGroupId(refs[activeIndex])
-    const currentOrder = refs[activeIndex] ? getGroupOrder(refs[activeIndex]) : -1
-    const order = (groupId: string) => getGroupOrder(refs.find((a) => getGroupId(a) === groupId)!)
+    const currentGroupId = getGroupId(refs[fromIndex])
+    const target = groups.find((a) => a.order > mark && a.id !== currentGroupId) || groups.find((a) => a.id !== currentGroupId)
+    if (!target) return null
 
-    const ordered = groupIds.sort((a, b) => order(a) - order(b))
-    const unseen = ordered.filter((a) => !seen.has(a) && a !== currentGroupId && !skip.includes(a))
-    let groupId: string | undefined = unseen.find((a) => order(a) > currentOrder) || unseen[0]
-
-    // everything has been shown: go round again, following on from the last one on stage
-    if (!groupId) {
-        const last = skip[skip.length - 1] ?? currentGroupId
-        const start = ordered.indexOf(last!) + 1
-        groupId = [...ordered.slice(start), ...ordered.slice(0, start)].find((a) => a !== last)
-    }
-
-    return groupId ? { groupId, layoutIndex: refs.findIndex((a) => getGroupId(a) === groupId) } : null
+    return { groupId: target.id, layoutIndex: refs.findIndex((a) => getGroupId(a) === target.id) }
 }
 
 export function isRequestSynced(request: Pick<StageRequest, "showId" | "groupId" | "layoutIndex" | "bySlide">, live: LiveStanza): boolean {
@@ -74,26 +87,31 @@ export function isRequestSynced(request: Pick<StageRequest, "showId" | "groupId"
 type Options = {
     getLive: () => LiveStanza
     publish: (request: StageRequest | null) => void
+    // returns a function that cancels the timer
+    schedule?: (callback: () => void, ms: number) => () => void
+}
+
+const startTimer = (callback: () => void, ms: number) => {
+    const timeout = setTimeout(callback, ms)
+    return () => clearTimeout(timeout)
 }
 
 export function createStageRequests(options: Options) {
     let current: StageRequest | null = null
+    let cancelIdle: (() => void) | null = null
+    let flashCount = 0
 
-    // stanzas that have been on the main screen
-    let seen = new Set<string>()
-    let seenShowId = ""
+    // furthest stanza reached on the main screen
+    let mainMark = -1
+    let markShowId = ""
 
-    function trackSeen(live: LiveStanza) {
+    function trackMain(live: LiveStanza) {
         if (!live) return
-        if (live.showId !== seenShowId) {
-            seen = new Set()
-            seenShowId = live.showId
+        if (live.showId !== markShowId) {
+            mainMark = -1
+            markShowId = live.showId
         }
-        if (!live.groupId) return
-
-        seen.add(live.groupId)
-        // starts over when everything has been seen
-        if (getGroupIds(live.refs).every((a) => seen.has(a))) seen = new Set([live.groupId])
+        mainMark = advanceMark(live.refs, mainMark, live.groupId)
     }
 
     function update(request: StageRequest) {
@@ -102,48 +120,78 @@ export function createStageRequests(options: Options) {
     }
 
     function sync() {
+        cancelIdle?.()
         current = null
         // always sent, so every display is cleared
         options.publish(null)
+    }
+
+    // restarted by any singer input
+    function touch() {
+        cancelIdle?.()
+        cancelIdle = (options.schedule || startTimer)(() => {
+            if (current) sync()
+        }, IDLE_SYNC_MS)
     }
 
     // show the queued stanza as current on stage
     function promote() {
         if (!current || current.state === "live") return
 
-        update({ ...current, state: "live", held: undefined, shown: [...(current.shown || []), current.groupId] })
+        const live = options.getLive()
+        const mark = live ? advanceMark(live.refs, current.mark ?? mainMark, current.groupId) : current.mark
+
+        update({ ...current, state: "live", held: undefined, mark })
     }
 
-    return {
-        request(data: Pick<StageRequest, "showId" | "groupId" | "layoutIndex" | "key">) {
-            // already on the main screen
-            if (isRequestSynced(data, options.getLive())) return sync()
+    // where the stage is ahead of the main screen, if it is
+    const getStageIndex = () => (current?.state === "live" ? current.layoutIndex : current?.held)
 
+    return {
+        touch,
+        request(data: Pick<StageRequest, "showId" | "groupId" | "layoutIndex" | "key">) {
+            touch()
+
+            const live = options.getLive()
             const previous = current?.showId === data.showId ? current : null
+            const stageIndex = previous ? getStageIndex() : undefined
+
+            // already current on stage: only highlight it
+            const stageGroupId = stageIndex !== undefined && live ? getGroupId(live.refs[stageIndex]) : live?.groupId
+            if (live?.showId === data.showId && stageGroupId === data.groupId) {
+                const shown = current || { showId: data.showId, groupId: data.groupId, layoutIndex: data.layoutIndex, state: "synced" as const }
+                // the count makes two presses at the same moment differ as well
+                options.publish({ ...shown, flash: Date.now() + ++flashCount })
+                return
+            }
+
+            // already on the main screen
+            if (isRequestSynced(data, live)) return sync()
             // requested again
             if (previous && previous.groupId === data.groupId && !previous.bySlide) return promote()
 
-            update({ ...data, state: "queued", held: previous?.state === "live" ? previous.layoutIndex : previous?.held, shown: previous?.shown })
+            update({ ...data, state: "queued", held: stageIndex, mark: previous?.mark })
         },
         // moves what is in the "next unseen" box to current on stage
         next() {
+            touch()
             if (current?.state === "queued") return promote()
 
             const live = options.getLive()
             if (!live) return
 
-            const shown = current?.shown || []
-            const target = getNextStanza(live.refs, seen, live.index, shown, current?.bySlide ? current.layoutIndex : undefined)
+            const mark = current?.mark ?? mainMark
+            const target = getNextStanza(live.refs, mark, getStageIndex() ?? live.index)
             if (!target) return
             // gone all the way round to what is on the main screen
             if (isRequestSynced({ ...target, showId: live.showId }, live)) return sync()
 
-            update({ ...target, showId: live.showId, state: "live", shown: [...shown, target.groupId] })
+            update({ ...target, showId: live.showId, state: "live", mark: advanceMark(live.refs, mark, target.groupId) })
         },
         sync,
         outputChanged() {
             const live = options.getLive()
-            trackSeen(live)
+            trackMain(live)
 
             if (!current || !live) return
             if (isRequestSynced(current, live)) return sync()

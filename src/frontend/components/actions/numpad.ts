@@ -46,6 +46,8 @@ export function receivedNumpad(data: number[]) {
 
     const action = getNumpadFunction(data)
     if (!action) return
+    // any key keeps the stage from syncing back
+    stageRequests.touch()
 
     if (action.type === "menu") toggleStageMenuAction()
     // "previous" returns the stage to what is on the main screen
