@@ -220,7 +220,7 @@
         })
 
         const label = stanza?.label || (HOTKEY_META[key]?.label ?? key.toUpperCase())
-        flashToast(`Requested ${label}: press again or ▶ to show it`)
+        flashToast(`Requested ${label}: press ▶ to show it`)
         closeMenu()
     }
 
@@ -262,7 +262,7 @@
     function handleKey(e: KeyboardEvent) {
         const t = e.target as HTMLElement | null
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return
-        // holding a key down must not count as pressing it twice
+        // holding a key down must not repeat it
         if (e.repeat) return
         const key = e.key.toLowerCase()
 

@@ -1,6 +1,6 @@
 // A stanza shown on stage ahead of the main screen (pure logic, no app imports, so it can be tested)
 // queued: shown in the "next unseen" box
-// live: shown as the current text on stage (requested twice, or "next")
+// live: shown as the current text on stage ("next")
 // synced: nothing is ahead, only used to highlight the current text
 // Nothing here changes the main screen. It all ends when the main screen reaches the same stanza,
 // when synced manually, or when the singer has been idle, and it never changes the point the main screen has reached.
@@ -167,9 +167,6 @@ export function createStageRequests(options: Options) {
 
             // already on the main screen
             if (isRequestSynced(data, live)) return sync()
-            // requested again
-            if (previous && previous.groupId === data.groupId && !previous.bySlide) return promote()
-
             update({ ...data, state: "queued", held: stageIndex, mark: previous?.mark })
         },
         // moves what is in the "next unseen" box to current on stage

@@ -49,14 +49,15 @@ describe("stage stanza requests", () => {
         expect(shown().groupId).toBe("chorus")
     })
 
-    it("makes a stanza current when requested again, and then highlights it", () => {
+    it("keeps a stanza queued when requested again, and highlights it once current", () => {
         const { requests, shown } = setup()
 
         requests.request(chorus)
         requests.request(chorus)
-        expect(shown().state).toBe("live")
+        expect(shown().state).toBe("queued")
         expect(shown().flash).toBe(undefined)
 
+        requests.next()
         requests.request(chorus)
         expect(shown().state).toBe("live")
         const first = shown().flash
@@ -126,7 +127,7 @@ describe("stage stanza requests", () => {
         test.mainShows(test.stanza("verse5"))
 
         test.requests.request(asked("chorus"))
-        test.requests.request(asked("chorus"))
+        test.requests.next()
         test.requests.next()
         expect(test.shown().groupId).toBe("verse6")
     })
